@@ -1,9 +1,9 @@
 # Allenamento
 
-App personale per tracciare allenamento di calisthenics + bici. Sito statico (solo HTML/CSS/JS vanilla, Chart.js da CDN), mobile-first, dark mode. I dati restano in `localStorage` del browser e, se configuri la sincronizzazione, vengono replicati in cloud sul tuo account Google così da seguirti su tutti i dispositivi.
+App personale per tracciare allenamento di calisthenics + bici. Sito statico (solo HTML/CSS/JS vanilla, Chart.js da CDN), mobile-first, interfaccia chiara ed elegante (bianco e verde). I dati restano in `localStorage` del browser e, se configuri la sincronizzazione, vengono replicati in cloud sul tuo account Google così da seguirti su tutti i dispositivi.
 
 ## Funzioni
-- **Oggi** — mostra in automatico cosa è in programma in base al giorno della settimana (forza A/B, bici o riposo), con checkbox e campi serie/ripetizioni o durata/km.
+- **Oggi** — mostra in automatico cosa è in programma in base al giorno della settimana (una delle 4 schede calisthenics A/B/C/D, bici o riposo), con checkbox e campi serie/ripetizioni o durata/km.
 - **Storico** — calendario mensile colorato (verde = completato, giallo = parziale, rosso = saltato, grigio = riposo); tocca un giorno per rivederlo e modificarlo.
 - **Statistiche** — allenamenti totali, completamento settimana, minuti/km bici, grafico peso e progressione per esercizio.
 - **Peso** — log del peso corporeo con grafico dell'andamento.
@@ -11,15 +11,19 @@ App personale per tracciare allenamento di calisthenics + bici. Sito statico (so
 - **Backup** — esporta/importa tutti i dati in JSON.
 
 ## Scheda settimanale
+4 allenamenti calisthenics + 2 uscite in bici + domenica di riposo. Split impegnativo Spinta / Trazione / Gambe & Core / Full body.
+
 | Giorno | Attività |
 |---|---|
-| Lunedì | Allenamento A |
-| Martedì | Bici media (40–60 min) |
-| Mercoledì | Allenamento B |
-| Giovedì | Riposo / mobilità |
-| Venerdì | Allenamento A o B (da alternare) |
+| Lunedì | A · Spinta (push) |
+| Martedì | B · Trazione (pull) |
+| Mercoledì | Bici media (40–60 min) |
+| Giovedì | C · Gambe & Core |
+| Venerdì | D · Full body & condizionamento |
 | Sabato | Bici lunga (60–90 min) |
 | Domenica | Riposo |
+
+Le schede usano 4 serie sui fondamentali, recuperi brevi (60–90 s) e la D è un circuito ad alta intensità: pensate per essere davvero stancanti. Le ripetizioni si registrano giorno per giorno e lo storico per esercizio resta consultabile nella vista **Statistiche**.
 
 ## Uso
 Apri `index.html` nel browser, oppure visita il sito pubblicato su GitHub Pages. Senza sincronizzazione i dati restano nel singolo browser: esporta ogni tanto un backup JSON dalla sezione **Backup**. Con la sincronizzazione attiva (sotto) lo storico è sempre allineato su tutti i tuoi dispositivi.
