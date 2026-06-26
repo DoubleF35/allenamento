@@ -40,7 +40,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{uid} {
       allow read, write: if request.auth != null
-        && request.auth.token.email == "TUA_EMAIL@gmail.com";
+        && request.auth.token.email == "fedefas.210@gmail.com";
     }
   }
 }
