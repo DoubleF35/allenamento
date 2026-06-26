@@ -342,6 +342,10 @@ textarea.input{resize:vertical;min-height:64px}
 
   <!-- ============ BACKUP ============ -->
   <section class="view" id="view-backup">
+    <div class="card" id="syncCard">
+      <div class="section-title" style="margin:0 0 12px">Sincronizzazione</div>
+      <div id="syncBody"></div>
+    </div>
     <div class="card">
       <div class="section-title" style="margin:0 0 12px">Dati salvati</div>
       <div class="kv"><span class="muted">Giorni registrati</span><span id="bDays">0</span></div>
@@ -387,8 +391,30 @@ textarea.input{resize:vertical;min-height:64px}
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
 "use strict";
+
+/* ============================================================
+   CONFIGURAZIONE CLOUD (Firebase)
+   ------------------------------------------------------------
+   Compila questi valori dalla console Firebase per sincronizzare
+   i dati tra i tuoi dispositivi col tuo account Google.
+   Finché restano vuoti, l'app funziona solo in locale (come prima).
+   Istruzioni passo-passo nel README.
+   ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: ""
+};
+// La tua email Google: solo questo account potrà accedere e sincronizzare.
+const OWNER_EMAIL = "";
 
 /* ============================================================
    Modello / scheda
@@ -451,11 +477,22 @@ function migrate(s){
   s.version = 1;
   s.days = s.days || {};
   s.weight = s.weight || [];
+  // updatedAt: timestamp ms dell'ultima modifica, usato per la sync cloud.
+  // I dati "legacy" (senza updatedAt) ma con contenuto reale vengono considerati
+  // recenti, così non vengono sovrascritti da un dispositivo vuoto al primo accesso.
+  if(typeof s.updatedAt!=="number"){
+    s.updatedAt = (Object.keys(s.days).length || s.weight.length>1) ? Date.now() : 0;
+  }
   return s;
 }
-function save(){
+function lsWrite(){
   try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
   catch(e){ toast("Salvataggio non riuscito","err"); }
+}
+function save(){
+  state.updatedAt = Date.now();
+  lsWrite();
+  cloudPush();
 }
 
 /* ============================================================
@@ -1091,7 +1128,7 @@ function show(tab){
   if(tab==="storico") renderCalendar();
   if(tab==="stats") renderStats();
   if(tab==="peso") renderPeso();
-  if(tab==="backup") renderBackup();
+  if(tab==="backup"){ renderBackup(); renderSync(); }
 }
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>show(t.dataset.tab));
 
@@ -1116,9 +1153,129 @@ document.getElementById("importBtn").onclick=()=>document.getElementById("import
 document.getElementById("importFile").onchange=e=>{ if(e.target.files[0]) doImport(e.target.files[0]); e.target.value=""; };
 document.getElementById("resetBtn").onclick=()=>{
   if(confirm("Cancellare TUTTI i dati? Esporta prima un backup. Operazione irreversibile.")){
-    localStorage.removeItem(LS_KEY); state=load(); renderAll(); toast("Dati azzerati");
+    localStorage.removeItem(LS_KEY); state=load(); save(); renderAll(); renderSync(); toast("Dati azzerati");
   }
 };
+
+/* ============================================================
+   Sincronizzazione cloud (Firebase Auth + Firestore)
+   ------------------------------------------------------------
+   Login col tuo account Google; i dati (lo stesso oggetto salvato
+   in localStorage) vengono salvati su un documento Firestore e
+   tenuti in sync in tempo reale su tutti i tuoi dispositivi.
+   Strategia: last-write-wins sul documento intero, confrontando
+   updatedAt. Un cloud vuoto non sovrascrive mai dati locali.
+   ============================================================ */
+const cloud = { configured:false, db:null, auth:null, user:null, ref:null, unsub:null, pushT:null, lastSync:null, status:"off" };
+
+function cloudConfigured(){ return !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId); }
+
+function rerenderActive(){
+  if(currentTab==="oggi") renderOggi();
+  else if(currentTab==="storico") renderCalendar();
+  else if(currentTab==="stats") renderStats();
+  else if(currentTab==="peso") renderPeso();
+  else if(currentTab==="backup") renderBackup();
+  refreshBadges();
+}
+
+function initCloud(){
+  if(!cloudConfigured()){ cloud.status="off"; renderSync(); return; }
+  if(typeof firebase==="undefined"){ console.warn("SDK Firebase non caricato"); cloud.status="off"; renderSync(); return; }
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    cloud.auth = firebase.auth();
+    cloud.db = firebase.firestore();
+    cloud.db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); // offline cache
+    cloud.configured = true;
+    cloud.status = "signedout";
+    cloud.auth.onAuthStateChanged(onAuth);
+  }catch(e){ console.error("init firebase", e); cloud.status="off"; renderSync(); }
+}
+
+function cloudSignIn(){
+  if(!cloud.configured) return;
+  const provider = new firebase.auth.GoogleAuthProvider();
+  cloud.auth.signInWithPopup(provider).catch(e=>{ if(e && e.code!=="auth/popup-closed-by-user") toast("Accesso non riuscito","err"); });
+}
+function cloudSignOut(){ if(cloud.auth) cloud.auth.signOut(); }
+
+function onAuth(user){
+  if(cloud.unsub){ cloud.unsub(); cloud.unsub=null; }
+  cloud.user = user || null;
+  if(!user){ cloud.status="signedout"; renderSync(); return; }
+  // gate: solo l'account proprietario
+  if(OWNER_EMAIL && user.email && user.email.toLowerCase()!==OWNER_EMAIL.toLowerCase()){
+    cloud.status="denied"; renderSync();
+    toast("Account non autorizzato","err");
+    cloud.auth.signOut();
+    return;
+  }
+  cloud.status="syncing";
+  cloud.ref = cloud.db.collection("users").doc(user.uid);
+  renderSync();
+  cloud.unsub = cloud.ref.onSnapshot(snap=>{
+    if(!snap.exists){ cloudPush(true); cloud.status="synced"; cloud.lastSync=Date.now(); renderSync(); return; }
+    const data = snap.data();
+    const cloudUpdated = Number(data.updatedAt)||0;
+    const localUpdated = Number(state.updatedAt)||0;
+    if(cloudUpdated > localUpdated){ applyCloud(data); }
+    else if(localUpdated > cloudUpdated){ cloudPush(true); }
+    cloud.status="synced"; cloud.lastSync=Date.now(); renderSync();
+  }, err=>{ console.error("snapshot", err); cloud.status="error"; renderSync(); });
+}
+
+function applyCloud(data){
+  const incomingDays = data.days ? Object.keys(data.days).length : 0;
+  const incomingW = data.weight ? data.weight.length : 0;
+  const localContent = Object.keys(state.days).length || state.weight.length;
+  // salvaguardia: un cloud vuoto non cancella dati locali esistenti, anzi li ricarica
+  if(incomingDays===0 && incomingW===0 && localContent){ cloudPush(true); return; }
+  state = migrate(data);
+  lsWrite();
+  rerenderActive();
+}
+
+function cloudPush(immediate){
+  if(!cloud.user || !cloud.ref) return;
+  clearTimeout(cloud.pushT);
+  const doPush = ()=>{
+    const payload = JSON.parse(JSON.stringify(state));
+    cloud.ref.set(payload)
+      .then(()=>{ cloud.status="synced"; cloud.lastSync=Date.now(); renderSync(); })
+      .catch(e=>{ console.error("push", e); cloud.status="error"; renderSync(); });
+  };
+  if(immediate) doPush(); else cloud.pushT=setTimeout(doPush, 800);
+}
+
+function renderSync(){
+  const body = document.getElementById("syncBody");
+  if(!body) return;
+  if(!cloudConfigured()){
+    body.innerHTML = `<p class="hint" style="margin-top:0">Cloud non ancora configurato. Compila <code>FIREBASE_CONFIG</code> e <code>OWNER_EMAIL</code> in cima allo script per sincronizzare i dati tra i tuoi dispositivi col tuo account Google. Istruzioni nel README.</p>`;
+    return;
+  }
+  if(cloud.status==="off"){
+    body.innerHTML = `<p class="hint" style="margin-top:0">Sincronizzazione non disponibile (SDK non caricato — serve connessione a Internet).</p>`;
+    return;
+  }
+  if(!cloud.user){
+    body.innerHTML = `
+      <p class="hint" style="margin-top:0">Accedi col tuo account Google per sincronizzare lo storico su tutti i tuoi dispositivi.</p>
+      <button class="btn sm" id="syncIn">Accedi con Google</button>`;
+    const b=document.getElementById("syncIn"); if(b) b.onclick=cloudSignIn;
+    return;
+  }
+  const st = cloud.status;
+  const dot = st==="synced"?"var(--completed)" : st==="error"?"var(--danger)" : st==="syncing"?"var(--partial)" : "var(--muted)";
+  const label = st==="synced"?"Sincronizzato" : st==="syncing"?"Sincronizzazione…" : st==="error"?"Errore di sync" : "Connesso";
+  const when = cloud.lastSync ? ` · ${new Date(cloud.lastSync).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}` : "";
+  body.innerHTML = `
+    <div class="kv"><span class="muted">Account</span><span>${esc(cloud.user.email||"—")}</span></div>
+    <div class="kv"><span class="muted">Stato</span><span class="pill"><span class="swatch" style="background:${dot}"></span>${label}${when}</span></div>
+    <button class="btn ghost sm" id="syncOut" style="margin-top:12px">Esci</button>`;
+  const o=document.getElementById("syncOut"); if(o) o.onclick=cloudSignOut;
+}
 
 /* ============================================================
    Avvio
@@ -1128,6 +1285,7 @@ function init(){
   document.getElementById("topDate").innerHTML = fmtLong(todayDate());
   document.getElementById("wDate").value=todayKey();
   show("oggi");
+  initCloud();
 }
 init();
 </script>
