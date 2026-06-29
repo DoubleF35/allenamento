@@ -153,6 +153,15 @@ textarea.input{resize:vertical;min-height:64px}
 .note-saved{color:var(--accent);font-size:13px;text-align:center;margin-top:10px;height:18px;transition:.2s;opacity:0}
 .note-saved.show{opacity:1}
 
+/* ---------- timer durata allenamento ---------- */
+.timer{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.timer .t-info{display:flex;flex-direction:column;gap:4px}
+.timer .t-time{font-family:var(--display);font-size:32px;font-weight:700;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;color:var(--text)}
+.timer .t-time.run{color:var(--accent-deep)}
+.timer .t-label{color:var(--muted);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.timer .t-actions{display:flex;gap:8px;flex:0 0 auto}
+.timer .t-actions .btn{width:auto;padding:11px 16px}
+
 /* ---------- calendar (celle piene) ---------- */
 .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .cal-head h3{font-family:var(--display);font-size:20px;text-transform:capitalize;letter-spacing:-.02em}
@@ -304,6 +313,11 @@ textarea.input{resize:vertical;min-height:64px}
     <div class="card" id="weekCard"></div>
     <div class="section-title">Peso corporeo</div>
     <div class="card"><div class="chart-wrap"><canvas id="weightChartStats"></canvas></div></div>
+    <div class="section-title">Durata allenamenti</div>
+    <div class="card">
+      <div class="chart-wrap"><canvas id="durChart"></canvas></div>
+      <div id="durList"></div>
+    </div>
     <div class="section-title">Progressione esercizi</div>
     <div class="card">
       <select class="input" id="progSelect"></select>
@@ -410,49 +424,50 @@ const WEEK_DOW = ["Domenica","Lunedì","Martedì","Mercoledì","Giovedì","Vener
 const WEEK_SHORT = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
 const MONTHS = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
 
-/* Piano predefinito: 4 calisthenics (A/B/C/D) + 2 bici (10 km) + domenica riposo */
+/* Versione del piano: a ogni incremento migrate() ribilancia le schede di default. */
+const PLAN_REV = 2;
+/* Piano predefinito: 4 calisthenics (A/B/C/D) + 2 bici (10 km) + domenica riposo.
+   Volume bilanciato: ~5 esercizi e ~15–16 serie per giornata, con un blocco di
+   addominali distribuito su ogni scheda (alti · bassi · obliqui · dinamici). */
 function defaultPlan(){
   return {
+    rev: PLAN_REV,
     workouts:{
       A:{ name:"A · Spinta",
-        note:"Riscaldamento 6–8 min · recupero 60–75 s · porta a cedimento l'ultima serie",
+        note:"Riscaldamento 6–8 min · recupero 60–75 s · l'ultima serie vicino al cedimento. Chiudi con gli addominali alti.",
         exercises:[
-          {id:"pushup",       name:"Push-up (declino se possibile)", target:"4 × 12–20"},
-          {id:"pike",         name:"Pike push-up", target:"4 × 8–12"},
-          {id:"dip",          name:"Dip (parallele o sedie)", target:"4 × 8–12"},
-          {id:"diamond",      name:"Push-up diamante", target:"3 × 10–15"},
+          {id:"pushup",       name:"Push-up (declino se possibile)", target:"4 × 12–18"},
+          {id:"pike",         name:"Pike push-up", target:"3 × 8–12"},
+          {id:"dip",          name:"Dip (parallele o sedie)", target:"3 × 8–12"},
           {id:"pseudoplanche",name:"Pseudo planche push-up", target:"3 × 8–12"},
-          {id:"plank",        name:"Plank con controllo", target:"4 × 45–60 sec"},
+          {id:"crunch",       name:"Crunch a terra (addominali alti)", target:"3 × 15–20"},
         ]},
       B:{ name:"B · Trazione",
-        note:"Riscaldamento 6–8 min · recupero 75–90 s · cura la fase negativa lenta",
+        note:"Riscaldamento 6–8 min · recupero 75–90 s · cura la fase negativa lenta. Chiudi con gli addominali bassi.",
         exercises:[
           {id:"pullup",   name:"Trazioni presa prona", target:"4 × 6–10"},
           {id:"chinup",   name:"Trazioni presa supina (chin-up)", target:"3 × 6–10"},
-          {id:"row",      name:"Rematore australiano", target:"4 × 10–15"},
-          {id:"archerrow",name:"Rematore arciere / presa stretta", target:"3 × 8–12"},
+          {id:"row",      name:"Rematore australiano", target:"3 × 10–15"},
           {id:"facepull", name:"Face pull (elastico o asciugamano)", target:"3 × 12–15"},
-          {id:"hollow",   name:"Hollow hold", target:"4 × 30–45 sec"},
+          {id:"legraises",name:"Sollevamento gambe (addominali bassi)", target:"3 × 12–18"},
         ]},
       C:{ name:"C · Gambe & Core",
-        note:"Riscaldamento 6–8 min · recupero 75–90 s · esplosivo in salita, lento in discesa",
+        note:"Riscaldamento 6–8 min · recupero 75–90 s · esplosivo in salita, lento in discesa. Giornata dedicata anche al core.",
         exercises:[
-          {id:"squat",     name:"Squat a corpo libero", target:"4 × 20–30"},
-          {id:"bulgarian", name:"Affondi bulgari (split squat)", target:"4 × 10–12 per gamba"},
-          {id:"pistol",    name:"Pistol squat (assistito)", target:"3 × 5–8 per gamba"},
-          {id:"lunge",     name:"Affondi camminati", target:"3 × 12–15 per gamba"},
-          {id:"calf",      name:"Calf raise monopodalico", target:"4 × 15–20 per gamba"},
-          {id:"legraises", name:"Sollevamento gambe (leg raises)", target:"4 × 12–18"},
+          {id:"squat",       name:"Squat a corpo libero", target:"4 × 15–25"},
+          {id:"bulgarian",   name:"Affondi bulgari (split squat)", target:"3 × 10–12 per gamba"},
+          {id:"calf",        name:"Calf raise monopodalico", target:"3 × 15–20 per gamba"},
+          {id:"russiantwist",name:"Russian twist (obliqui)", target:"3 × 20–30"},
+          {id:"sideplank",   name:"Plank laterale (obliqui)", target:"3 × 30–40 sec per lato"},
         ]},
       D:{ name:"D · Full body & Condizionamento",
-        note:"Circuito ad alta intensità · 3–4 giri · recupero minimo tra gli esercizi",
+        note:"Circuito · 3 giri · recupero minimo tra gli esercizi. Chiudi con gli addominali dinamici.",
         exercises:[
-          {id:"burpee",    name:"Burpee", target:"4 × 12–15"},
-          {id:"jumpsquat", name:"Squat jump", target:"4 × 15–20"},
-          {id:"explosive", name:"Push-up esplosivi", target:"4 × 8–12"},
-          {id:"mountain",  name:"Mountain climber", target:"4 × 40–50 sec"},
-          {id:"lsit",      name:"L-sit / tuck hold", target:"4 × 20–30 sec"},
-          {id:"plankjack", name:"Plank jack", target:"4 × 30–40 sec"},
+          {id:"burpee",       name:"Burpee", target:"3 × 12–15"},
+          {id:"jumpsquat",    name:"Squat jump", target:"3 × 15–20"},
+          {id:"explosive",    name:"Push-up esplosivi", target:"3 × 8–12"},
+          {id:"mountain",     name:"Mountain climber", target:"3 × 40–50 sec"},
+          {id:"bicyclecrunch",name:"Bicycle crunch (addominali)", target:"3 × 30–40"},
         ]},
     },
     schedule:{
@@ -484,6 +499,18 @@ const LEGACY_WORKOUTS = {
     {id:"glutebridge",name:"Ponte glutei",target:"3 × 12–15"},
     {id:"legraises",name:"Leg raises",target:"3 × 10–15"},
   ],
+  // Esercizi usciti dal piano di default dopo il ribilanciamento: servono solo a
+  // dare un nome leggibile ai vecchi allenamenti già registrati.
+  _retired:[
+    {id:"diamond",  name:"Push-up diamante", target:"3 × 10–15"},
+    {id:"plank",    name:"Plank con controllo", target:"4 × 45–60 sec"},
+    {id:"archerrow",name:"Rematore arciere / presa stretta", target:"3 × 8–12"},
+    {id:"hollow",   name:"Hollow hold", target:"4 × 30–45 sec"},
+    {id:"pistol",   name:"Pistol squat (assistito)", target:"3 × 5–8 per gamba"},
+    {id:"lunge",    name:"Affondi camminati", target:"3 × 12–15 per gamba"},
+    {id:"lsit",     name:"L-sit / tuck hold", target:"4 × 20–30 sec"},
+    {id:"plankjack",name:"Plank jack", target:"4 × 30–40 sec"},
+  ],
 };
 
 /* ============================================================
@@ -492,6 +519,8 @@ const LEGACY_WORKOUTS = {
 const LS_KEY = "allenamento.v1";
 let state = load();
 let chartProg=null;
+let chartDur=null;
+let timerInt=null;
 const charts={};
 let calMonth;
 let currentTab="oggi";
@@ -507,7 +536,17 @@ function migrate(s){
   s.days = s.days || {};
   s.weight = s.weight || [];
   if(!s.plan) s.plan = defaultPlan();
-  else { const dp=defaultPlan(); s.plan.workouts = s.plan.workouts || dp.workouts; s.plan.schedule = s.plan.schedule || dp.schedule; }
+  else {
+    const dp=defaultPlan();
+    s.plan.workouts = s.plan.workouts || dp.workouts;
+    s.plan.schedule = s.plan.schedule || dp.schedule;
+    if((s.plan.rev||0) < PLAN_REV){
+      // rev 2: programma ribilanciato (volume più equilibrato per giorno) + addominali su ogni scheda.
+      // Aggiorna le schede di default A/B/C/D mantenendo i giorni della settimana e lo storico già registrato.
+      Object.keys(dp.workouts).forEach(wid=>{ s.plan.workouts[wid] = dp.workouts[wid]; });
+      s.plan.rev = PLAN_REV;
+    }
+  }
   s.settings = Object.assign(defaultSettings(), s.settings||{});
   s.settings.reminders = Object.assign(defaultSettings().reminders, s.settings.reminders||{});
   // Compat: i record forza salvati con una vecchia scheda non hanno exIds.
@@ -534,6 +573,8 @@ function dateFromKey(k){ const [y,m,d]=k.split("-").map(Number); const dt=new Da
 function fmtLong(d){ return `${WEEK_DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`; }
 function fmtShort(d){ return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`; }
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); x.setHours(0,0,0,0); return x; }
+function fmtClock(sec){ sec=Math.max(0,Math.round(sec)); const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60; const mm=String(m).padStart(2,"0"), ss=String(s).padStart(2,"0"); return h?`${h}:${mm}:${ss}`:`${mm}:${ss}`; }
+function timerElapsed(rec){ const t=rec&&rec.timer; if(!t) return 0; return (t.acc||0) + (t.run ? (Date.now()-(t.t0||Date.now()))/1000 : 0); }
 
 /* ============================================================
    Piano (dinamico da state.plan)
@@ -611,6 +652,7 @@ let routeMap=null, routeLayer=null, lastPos=null, lastRoute=null;
 
 function renderOggi(){
   if(routeMap){ try{routeMap.remove();}catch(e){} routeMap=null; routeLayer=null; }
+  if(timerInt){ clearInterval(timerInt); timerInt=null; }
   const key=todayKey(), d=dateFromKey(key), sched=scheduleFor(d), streak=computeStreak();
   const el=document.getElementById("view-oggi");
 
@@ -700,6 +742,10 @@ function renderOggi(){
       <div class="sub">${esc(w.note||"")}</div>
       ${heroFoot(streak)}
     </div>
+    <div class="card timer">
+      <div class="t-info"><div class="t-time" id="tDisp">00:00</div><div class="t-label">Durata allenamento</div></div>
+      <div class="t-actions"><button class="btn sm" id="tToggle">Avvia</button><button class="btn ghost sm" id="tReset">Azzera</button></div>
+    </div>
     <div class="card">${exHtml}</div>
     <div class="card"><div class="field" style="margin:0"><label>Nota del giorno</label><textarea class="input" id="sNote" placeholder="Sensazioni, dolori, energia…">${esc(rec.note||"")}</textarea></div></div>
     <button class="btn" id="completeBtn">Completa giornata</button>
@@ -712,7 +758,24 @@ function renderOggi(){
   el.querySelectorAll(".ex-reps").forEach(inp=>inp.addEventListener("input",()=>{ const id=inp.dataset.reps; rec.exercises[id]=rec.exercises[id]||{}; rec.exercises[id].reps=inp.value; save(); }));
   el.querySelectorAll(".ex-hist").forEach(b=>b.onclick=()=>openExerciseHistory(b.dataset.hist));
   document.getElementById("sNote").addEventListener("input",e=>{ rec.note=e.target.value; save(); });
+
+  // Timer durata: avvia / pausa / azzera, persistito nel record così segue ricariche e dispositivi.
+  rec.timer = rec.timer || { run:false, acc: Number(rec.durSec)||0, t0:0 };
+  const tDisp=document.getElementById("tDisp"), tToggle=document.getElementById("tToggle"), tReset=document.getElementById("tReset");
+  const paintTimer=()=>{ tDisp.textContent=fmtClock(timerElapsed(rec)); tDisp.classList.toggle("run",!!rec.timer.run); tToggle.textContent=rec.timer.run?"Pausa":((rec.timer.acc||0)>0?"Riprendi":"Avvia"); };
+  const startTick=()=>{ if(timerInt) clearInterval(timerInt); timerInt=setInterval(paintTimer,1000); };
+  const stopTick=()=>{ if(timerInt){ clearInterval(timerInt); timerInt=null; } };
+  paintTimer(); if(rec.timer.run) startTick();
+  tToggle.onclick=()=>{
+    if(rec.timer.run){ rec.timer.acc=timerElapsed(rec); rec.timer.run=false; rec.timer.t0=0; stopTick(); }
+    else { rec.timer.t0=Date.now(); rec.timer.run=true; startTick(); }
+    rec.durSec=Math.round(timerElapsed(rec)); save(); paintTimer();
+  };
+  tReset.onclick=()=>{ rec.timer={run:false,acc:0,t0:0}; rec.durSec=0; stopTick(); save(); paintTimer(); };
+
   document.getElementById("completeBtn").onclick=()=>{
+    if(rec.timer && rec.timer.run){ rec.timer.acc=timerElapsed(rec); rec.timer.run=false; rec.timer.t0=0; }
+    rec.durSec=Math.round(timerElapsed(rec));
     save(); const st=dayStatus(key), msgEl=document.getElementById("sMsg");
     if(st==="completed"){ msgEl.textContent="Allenamento completato"; toast("Allenamento completato"); }
     else if(st==="partial"){ msgEl.textContent="Salvato come parziale"; toast("Parziale: spunta tutti gli esercizi per completare"); }
@@ -852,6 +915,11 @@ function activityTotals(){
   for(const key in state.days){ const r=state.days[key]; ["bike","run"].forEach(t=>{ if(r.type===t && r[t]){ min+=Number(r[t].min)||0; km+=Number(r[t].km)||0; } }); }
   return {min,km};
 }
+function workoutDurations(){
+  const out=[];
+  Object.keys(state.days).sort().forEach(k=>{ const r=state.days[k]; if(r && r.type==="strength" && Number(r.durSec)>0) out.push({key:k, sec:Number(r.durSec)}); });
+  return out;
+}
 function parseReps(s){ if(!s) return []; return (String(s).match(/\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFloat(x.replace(",","."))); }
 function lastReps(exId, beforeKey){
   const keys=Object.keys(state.days).filter(k=>k<beforeKey).sort().reverse();
@@ -871,11 +939,16 @@ function exerciseHistory(exId){
 }
 function renderStats(){
   const total=countCompletedWorkouts(), wk=weekProgress(), bt=activityTotals();
+  const durs=workoutDurations();
+  const avgMin = durs.length? Math.round(durs.reduce((a,b)=>a+b.sec,0)/durs.length/60) : 0;
+  const lastMin = durs.length? Math.round(durs[durs.length-1].sec/60) : 0;
   document.getElementById("statGrid").innerHTML=`
     <div class="stat"><div class="n">${total}</div><div class="l">Allenamenti</div><div class="sub">completati in totale</div></div>
     <div class="stat"><div class="n">${computeStreak()}</div><div class="l">Streak</div><div class="sub">giorni consecutivi</div></div>
     <div class="stat"><div class="n">${bt.min}</div><div class="l">Minuti cardio</div><div class="sub">bici + corsa</div></div>
-    <div class="stat"><div class="n">${(Math.round(bt.km*10)/10).toLocaleString("it-IT")}</div><div class="l">Km totali</div><div class="sub">bici + corsa</div></div>`;
+    <div class="stat"><div class="n">${(Math.round(bt.km*10)/10).toLocaleString("it-IT")}</div><div class="l">Km totali</div><div class="sub">bici + corsa</div></div>
+    <div class="stat"><div class="n">${durs.length?avgMin:"—"}</div><div class="l">Durata media</div><div class="sub">min · allenamenti forza</div></div>
+    <div class="stat"><div class="n">${durs.length?lastMin:"—"}</div><div class="l">Ultima durata</div><div class="sub">min</div></div>`;
   document.getElementById("weekCard").innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:baseline">
       <div style="font-weight:600">Completamento</div>
@@ -885,6 +958,18 @@ function renderStats(){
     <div style="color:var(--muted);font-size:13px;margin-top:9px">${wk.done} di ${wk.total} allenamenti previsti questa settimana</div>`;
   renderWeightChart("weightChartStats","chartWStats");
   renderProgression();
+  renderDurations();
+}
+function renderDurations(){
+  const durs=workoutDurations(), list=document.getElementById("durList");
+  if(chartDur){ chartDur.destroy(); chartDur=null; }
+  if(!durs.length){ list.innerHTML=`<div class="empty-note">Avvia il timer durante un allenamento di forza: la durata resta salvata e qui vedrai se migliori.</div>`; return; }
+  chartDur=new Chart(document.getElementById("durChart"),{
+    type:"line",
+    data:{ labels:durs.map(d=>fmtShort(dateFromKey(d.key))), datasets:[{ label:"Durata (min)", data:durs.map(d=>Math.round(d.sec/60*10)/10), borderColor:getC("--accent"), backgroundColor:"rgba(63,143,91,.12)", fill:true, tension:.3, pointRadius:3, pointBackgroundColor:getC("--accent") }]},
+    options:lineOpts()
+  });
+  list.innerHTML=durs.slice().reverse().map(d=>`<div class="hist-row"><span class="hd">${fmtShort(dateFromKey(d.key))}</span><span class="hv">${fmtClock(d.sec)}</span></div>`).join("");
 }
 function renderProgression(){
   const sel=document.getElementById("progSelect");
