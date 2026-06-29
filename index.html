@@ -270,6 +270,59 @@ textarea.input{resize:vertical;min-height:64px}
 .spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite}
 .btn.ghost .spin{border-color:rgba(44,108,67,.3);border-top-color:var(--accent-deep)}
 @keyframes rot{to{transform:rotate(360deg)}}
+
+/* ============================================================
+   Responsive — tablet e desktop
+   Mobile resta invariato; da 700px contenuto più largo,
+   da 1000px la barra in basso diventa una sidebar a sinistra.
+   ============================================================ */
+@media (min-width:700px){
+  .app{max-width:760px}
+  .topbar{padding-top:26px}
+  .hero h2{font-size:34px}
+  .stat-grid{grid-template-columns:repeat(3,1fr)}
+  .chart-wrap{height:264px}
+  .tabbar{max-width:760px}
+  .modal{max-width:640px}
+}
+
+@media (min-width:1000px){
+  body{padding:0 0 56px 248px}
+  .app{max-width:960px;margin:0 auto;padding:0 30px}
+  .topbar{padding:30px 0 14px}
+
+  /* barra di navigazione: da bottom-bar a sidebar verticale */
+  .tabbar{
+    top:0;bottom:0;left:0;right:auto;height:100vh;width:248px;max-width:248px;margin:0;
+    display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:6px;
+    padding:30px 16px;border-top:none;border-right:1px solid var(--border);
+    box-shadow:none;background:var(--surface);backdrop-filter:none;
+  }
+  .tab{
+    flex-direction:row;justify-content:flex-start;gap:13px;width:100%;
+    padding:12px 14px;font-size:14.5px;letter-spacing:0;border-radius:12px;
+  }
+  .tab svg{width:21px;height:21px}
+  .tab:hover{background:var(--surface-2);color:var(--text)}
+  .tab.on{background:var(--accent-dim);color:var(--accent-deep)}
+
+  /* esercizi su due colonne per sfruttare la larghezza */
+  .ex-list{display:grid;grid-template-columns:1fr 1fr;column-gap:36px}
+  .ex-list .ex:nth-last-child(2){border-bottom:none}
+
+  /* modale centrata invece che a comparsa dal basso */
+  .modal-bg{align-items:center}
+  .modal{max-width:600px;border-radius:20px;border-bottom:1px solid var(--border);
+    padding:24px 22px;animation:fade .2s ease}
+  .toast{left:calc(50% + 124px);bottom:30px}
+  .toast.show{transform:translateX(-50%) translateY(0)}
+}
+
+@media (min-width:1320px){
+  body{padding-left:264px}
+  .tabbar{width:264px;max-width:264px}
+  .app{max-width:1060px}
+}
 </style>
 </head>
 <body>
@@ -746,7 +799,7 @@ function renderOggi(){
       <div class="t-info"><div class="t-time" id="tDisp">00:00</div><div class="t-label">Durata allenamento</div></div>
       <div class="t-actions"><button class="btn sm" id="tToggle">Avvia</button><button class="btn ghost sm" id="tReset">Azzera</button></div>
     </div>
-    <div class="card">${exHtml}</div>
+    <div class="card ex-list">${exHtml}</div>
     <div class="card"><div class="field" style="margin:0"><label>Nota del giorno</label><textarea class="input" id="sNote" placeholder="Sensazioni, dolori, energia…">${esc(rec.note||"")}</textarea></div></div>
     <button class="btn" id="completeBtn">Completa giornata</button>
     <div class="note-saved" id="sMsg"></div>`;
