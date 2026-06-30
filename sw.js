@@ -3,7 +3,7 @@
    - notifiche promemoria via periodicSync (best-effort) + notificationclick
    La config promemoria è scritta dalla pagina in IndexedDB (db "allenamento-rem", store "kv", chiave "config"). */
 
-const CACHE = "allenamento-v5";
+const CACHE = "allenamento-v6";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (e) => {

@@ -123,6 +123,8 @@ a{color:var(--accent)}
 .ex-body{flex:1;min-width:0}
 .ex-name{font-weight:600;font-size:15.5px}
 .ex-target{color:var(--muted);font-size:12.5px;margin-top:2px}
+.ex-suggest{display:inline-flex;align-items:center;gap:6px;margin-top:5px;font-size:12.5px;color:var(--accent-deep);background:rgba(63,143,91,.10);border:1px solid rgba(63,143,91,.24);border-radius:999px;padding:3px 11px;font-weight:500}
+.ex-suggest strong{font-weight:700}
 .ex-reps{margin-top:10px;width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 11px;font-size:14px}
 .ex-reps:focus{outline:none;border-color:var(--accent);background:var(--surface-3)}
 .ex-hist{background:none;border:none;color:var(--muted);font-size:12px;padding:6px 0 0;display:inline-flex;align-items:center;gap:5px}
@@ -776,13 +778,17 @@ function renderOggi(){
   const w = WK(rec.workout);
   const exHtml = w.exercises.map(e=>{
     const er=rec.exercises[e.id]||{}, last=lastReps(e.id,key);
+    const per=suggestPerSet(e.id,key), sets=targetSets(e.target);
+    const sug = per!==null ? `${sets} × ${per}${targetSuffix(e.target)}` : "";
+    const ph = per!==null ? Array(Math.min(sets,4)).fill(per).join(", ") : "es. 12, 11, 10";
     return `
       <div class="ex">
         <div class="check ${er.done?"on":""}" data-ex="${e.id}" role="checkbox" aria-checked="${!!er.done}" tabindex="0"><svg viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></svg></div>
         <div class="ex-body">
           <div class="ex-name">${esc(e.name)}</div>
+          ${sug ? `<div class="ex-suggest" title="Proposta in automatico dai tuoi ultimi allenamenti">Consigliato oggi <strong>${esc(sug)}</strong></div>` : ""}
           <div class="ex-target">Obiettivo ${esc(e.target)}</div>
-          <input class="ex-reps" data-reps="${e.id}" placeholder="es. 12, 11, 10" value="${esc(er.reps||"")}">
+          <input class="ex-reps" data-reps="${e.id}" placeholder="${esc(ph)}" value="${esc(er.reps||"")}">
           <button class="ex-hist" data-hist="${e.id}">Storico${last?` · <span class="last">ultima: ${esc(last)}</span>`:""}</button>
         </div>
       </div>`;
@@ -979,6 +985,26 @@ function lastReps(exId, beforeKey){
   for(const k of keys){ const r=state.days[k]; if(r.type==="strength" && r.exercises && r.exercises[exId] && r.exercises[exId].reps) return r.exercises[exId].reps; }
   return "";
 }
+// Numero di serie e suffisso (es. "sec", "per gamba") estratti dall'obiettivo "3 × 15–20 sec".
+function targetSets(target){ const m=String(target||"").match(/(\d+)\s*[×xX]/); return m?parseInt(m[1],10):3; }
+function targetSuffix(target){ const m=String(target||"").match(/[×xX][\s\d.,–—\-]*(.*)$/); return (m && m[1]) ? " "+m[1].trim() : ""; }
+/* Progressione automatica: propone le ripetizioni per la prossima volta in base allo
+   storico. Parte dalla media delle reps svolte; se l'ultima volta hai completato tutte
+   le serie al numero proposto (min ≥ proposta) propone +1, altrimenti riparte dalla media.
+   Replay cronologico dello storico → stateless e robusto rispetto alla sync multi-device. */
+function suggestPerSet(exId, beforeKey){
+  const keys=Object.keys(state.days).filter(k=>k<beforeKey).sort();
+  let sug=null;
+  for(const k of keys){
+    const r=state.days[k];
+    if(!(r.type==="strength" && r.exercises && r.exercises[exId])) continue;
+    const nums=parseReps(r.exercises[exId].reps);
+    if(!nums.length) continue;
+    const avg=Math.round(nums.reduce((a,b)=>a+b,0)/nums.length);
+    sug = (sug===null) ? avg : (Math.min(...nums)>=sug ? sug+1 : avg);
+  }
+  return sug;
+}
 function exerciseHistory(exId){
   const out=[];
   Object.keys(state.days).sort().forEach(k=>{
@@ -1132,7 +1158,7 @@ function openDayEditor(key){
   rec.exercises=rec.exercises||{};
   const wid=rec.workout||workoutForDay(key,sched,rec), w=WK(wid);
   const exList=(Array.isArray(rec.exIds)&&rec.exIds.length) ? rec.exIds.map(id=>exLookup(id)) : w.exercises;
-  const exHtml=exList.map(e=>{ const er=rec.exercises[e.id]||{}; return `<div class="ex"><div class="check ${er.done?"on":""}" data-ex="${e.id}" role="checkbox" tabindex="0"><svg viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></svg></div><div class="ex-body"><div class="ex-name">${esc(e.name)}</div>${e.target?`<div class="ex-target">Obiettivo ${esc(e.target)}</div>`:""}<input class="ex-reps" data-reps="${e.id}" placeholder="es. 12, 11, 10" value="${esc(er.reps||"")}"></div></div>`; }).join("");
+  const exHtml=exList.map(e=>{ const er=rec.exercises[e.id]||{}; const per=suggestPerSet(e.id,key); const sug=per!==null?`${targetSets(e.target)} × ${per}${targetSuffix(e.target)}`:""; return `<div class="ex"><div class="check ${er.done?"on":""}" data-ex="${e.id}" role="checkbox" tabindex="0"><svg viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></svg></div><div class="ex-body"><div class="ex-name">${esc(e.name)}</div>${sug?`<div class="ex-suggest" title="Proposta in automatico dai tuoi ultimi allenamenti">Consigliato <strong>${esc(sug)}</strong></div>`:""}${e.target?`<div class="ex-target">Obiettivo ${esc(e.target)}</div>`:""}<input class="ex-reps" data-reps="${e.id}" placeholder="es. 12, 11, 10" value="${esc(er.reps||"")}"></div></div>`; }).join("");
   inner+=`<div class="msub">${esc(w.name)}${future?" · in programma":""}</div><div style="margin-bottom:14px">${exHtml}</div><div class="field"><label>Nota</label><textarea class="input" id="mNote" placeholder="Sensazioni…">${esc(rec.note||"")}</textarea></div><button class="btn sm" id="mSave">Salva</button>`;
   openModal(inner);
   const working=JSON.parse(JSON.stringify(rec)); working.exercises=working.exercises||{};
