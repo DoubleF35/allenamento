@@ -1,5 +1,5 @@
 # Allenamento
-
+live at: https://doublef35.github.io/allenamento/
 App per tracciare allenamento di calisthenics, bici e corsa. **PWA** installabile, mobile-first, interfaccia chiara (bianco e verde), font Helvetica. Single-file (`index.html`, HTML/CSS/JS vanilla); Chart.js, Leaflet e Firebase da CDN.
 
 Funziona **offline** sul dispositivo (`localStorage`); con l'accesso (gratuito) i dati si sincronizzano nel **cloud** in tempo reale e ti seguono su ogni dispositivo. È **multi-utente**: ogni persona accede col proprio account e ha i propri dati e il proprio piano.
