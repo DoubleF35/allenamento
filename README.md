@@ -1,6 +1,6 @@
 # Allenamento
 live at: https://doublef35.github.io/allenamento/
-App per tracciare allenamento di calisthenics, bici e corsa. **PWA** installabile, mobile-first, interfaccia chiara (bianco e verde), font Helvetica. Single-file (`index.html`, HTML/CSS/JS vanilla); Chart.js, Leaflet e Firebase da CDN.
+App per tracciare allenamento di calisthenics, bici e corsa. **PWA** installabile, mobile-first, design editoriale carta/inchiostro (Fraunces + Inter). Single-file (`index.html`, HTML/CSS/JS vanilla); Chart.js, Leaflet e Firebase da CDN.
 
 Funziona **offline** sul dispositivo (`localStorage`); con l'accesso (gratuito) i dati si sincronizzano nel **cloud** in tempo reale e ti seguono su ogni dispositivo. È **multi-utente**: ogni persona accede col proprio account e ha i propri dati e il proprio piano.
 
@@ -14,19 +14,19 @@ Funziona **offline** sul dispositivo (`localStorage`); con l'accesso (gratuito) 
 - **Promemoria** — notifiche nei giorni/orario scelti + export **.ics** (promemoria ricorrente nel calendario del telefono, affidabile anche ad app chiusa).
 
 ## Piano predefinito
-4 allenamenti calisthenics + 2 uscite in bici + domenica di riposo.
+Percorso calisthenics con obiettivo **handstand push-up e planche**: braccia, petto, schiena e addominali ogni giorno di allenamento; gambe ridotte a un richiamo esplosivo (calcio e bici coprono il resto). 4 giornate di forza + 2 uscite in bici (con mini blocco braccia & core) + domenica di riposo.
 
 | Giorno | Attività |
 |---|---|
-| Lunedì | A · Spinta (push) |
-| Martedì | B · Trazione (pull) |
-| Mercoledì | Bici media (≈ 10 km) |
-| Giovedì | C · Gambe & Core |
-| Venerdì | D · Full body & condizionamento |
-| Sabato | Bici lunga (≈ 10 km) |
-| Domenica | Riposo |
+| Lunedì | A · Verticale & Spinta (skill HSPU) |
+| Martedì | B · Trazione & Schiena |
+| Mercoledì | Bici media (≈ 12 km) + mini blocco braccia & core |
+| Giovedì | C · Planche & Petto (skill planche) |
+| Venerdì | D · Braccia & Core |
+| Sabato | Bici lunga (≈ 18 km) + mini blocco braccia & core |
+| Domenica | Riposo · mobilità polsi e spalle |
 
-Ogni utente può cambiarlo da **Profilo → Personalizza il piano**: tipo di ogni giorno (forza A/B/C/D, bici, corsa, riposo), km/durata ed esercizi delle schede.
+Ogni utente può cambiarlo da **Profilo → Personalizza il piano**: tipo di ogni giorno (forza A/B/C/D, bici, corsa, riposo), km/durata ed esercizi delle schede (compresa la scheda E, il mini blocco post-bici).
 
 ## Login multi-utente (Firebase, gratis)
 La sync usa **Firebase** (Auth con Google + Firestore), gratuito per questo uso. La config è già nel codice (progetto `workout-e9380`). Per far funzionare l'accesso **a tutti** servono due cose nella console Firebase:

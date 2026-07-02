@@ -3,7 +3,7 @@
    - notifiche promemoria via periodicSync (best-effort) + notificationclick
    La config promemoria è scritta dalla pagina in IndexedDB (db "allenamento-rem", store "kv", chiave "config"). */
 
-const CACHE = "allenamento-v6";
+const CACHE = "allenamento-v7";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (e) => {
@@ -26,6 +26,20 @@ self.addEventListener("fetch", (e) => {
     return;
   }
   if (sameOrigin) {
+    e.respondWith(
+      caches.match(req).then((hit) =>
+        hit || fetch(req).then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+          return res;
+        }).catch(() => hit)
+      )
+    );
+    return;
+  }
+  // Google Fonts (Fraunces/Inter): cache-first così il design tiene i font anche offline.
+  const host = url.hostname;
+  if (host === "fonts.googleapis.com" || host === "fonts.gstatic.com") {
     e.respondWith(
       caches.match(req).then((hit) =>
         hit || fetch(req).then((res) => {
