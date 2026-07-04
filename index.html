@@ -956,42 +956,102 @@ function destPoint(lat,lon,bearingDeg,distKm){
   const lo2=lo1+Math.atan2(Math.sin(br)*Math.sin(dr)*Math.cos(la1), Math.cos(dr)-Math.sin(la1)*Math.sin(la2));
   return {lat:toDeg(la2), lon:toDeg(lo2)};
 }
-function loopWaypoints(lat,lon,rKm,baseBearing){
-  const p1=destPoint(lat,lon,baseBearing,rKm), p2=destPoint(lat,lon,baseBearing+120,rKm*0.92), p3=destPoint(lat,lon,baseBearing+240,rKm);
-  return [[lon,lat],[p1.lon,p1.lat],[p2.lon,p2.lat],[p3.lon,p3.lat],[lon,lat]];
+function loopWaypoints(lat,lon,rKm,baseBearing,nVia,dir){
+  // La partenza sta SUL cerchio, non al centro: il centro è spostato di rKm nella
+  // direzione del bearing e i via-point sono distribuiti lungo la circonferenza,
+  // così andata e ritorno passano naturalmente da strade diverse.
+  const c=destPoint(lat,lon,baseBearing,rKm), step=360/(nVia+1), pts=[[lon,lat]];
+  for(let i=1;i<=nVia;i++){
+    const p=destPoint(c.lat,c.lon,baseBearing+180+dir*step*i,rKm);
+    pts.push([p.lon,p.lat]);
+  }
+  pts.push([lon,lat]);
+  return pts;
+}
+function segLen(a,b){
+  const kx=Math.cos(toRad((a[1]+b[1])/2))*111.32, dx=(a[0]-b[0])*kx, dy=(a[1]-b[1])*110.57;
+  return Math.sqrt(dx*dx+dy*dy);
+}
+function overlapFraction(coords){
+  // Quota del tracciato percorsa più di una volta: celle da ~20 m, tratte senza
+  // direzione. La lunghezza dei segmenti interni a una cella si accumula (carry)
+  // e viene attribuita alla prima transizione di cella, così anche i tracciati
+  // con nodi molto fitti (curve, tornanti) vengono conteggiati per intero.
+  const q=c=>Math.round(c[0]/2e-4)+","+Math.round(c[1]/2e-4), seen=new Set();
+  let total=0, dup=0, carry=0, prevCell=null;
+  for(let i=0;i<coords.length;i++){
+    if(i>0){ const L=segLen(coords[i-1],coords[i]); total+=L; carry+=L; }
+    const cell=q(coords[i]);
+    if(prevCell===null){ prevCell=cell; carry=0; continue; }
+    if(cell!==prevCell){
+      const k=prevCell<cell?prevCell+"|"+cell:cell+"|"+prevCell;
+      if(seen.has(k)) dup+=carry; else seen.add(k);
+      prevCell=cell; carry=0;
+    }
+  }
+  return total?Math.min(1,dup/total):0;
 }
 async function brouter(points, profile){
   const lonlats=points.map(p=>`${p[0].toFixed(6)},${p[1].toFixed(6)}`).join("|");
   const url=`https://brouter.de/brouter?lonlats=${lonlats}&profile=${profile}&alternativeidx=0&format=geojson`;
-  const res=await fetch(url);
+  const res=await fetch(url,(typeof AbortSignal!=="undefined"&&AbortSignal.timeout)?{signal:AbortSignal.timeout(15000)}:undefined);
   if(!res.ok) throw new Error("brouter "+res.status);
   const gj=await res.json(); const f=gj.features && gj.features[0];
   if(!f) throw new Error("no route");
   const pr=f.properties||{};
   return { coords:f.geometry.coordinates, km:(+pr["track-length"]||0)/1000, ascend:+pr["filtered ascend"]||0, timeSec:+pr["total-time"]||0, waypoints:points };
 }
+async function fetchLoop(lat,lon,cand,profile,target){
+  const route=await brouter(loopWaypoints(lat,lon,cand.r,cand.b,cand.n,cand.d),profile);
+  route.overlap=overlapFraction(route.coords);
+  route.bearing=cand.b; route.nVia=cand.n; route.dir=cand.d;
+  // Prima i km giusti, poi l'overlap: entro ±10% dal target l'errore distanza non
+  // pesa, oltre pesa forte — così un anello "pulito" ma troppo corto non vince.
+  route.score=(route.km?Math.max(0,Math.abs(route.km-target)/target-0.10)*4:9)+route.overlap*1.6;
+  return route;
+}
+async function findBestLoop(lat,lon,target,profile){
+  // Fino a 3 round da 4 anelli candidati in parallelo (bearing, verso e n. via-point
+  // diversi); punteggio = errore distanza + 1.6×overlap, vince il migliore globale.
+  const seed=Math.random()*360;
+  let r=target/8.6, best=null; // circonferenza del cerchio ≈ km voluti / fattore-strade
+  for(let round=0; round<3; round++){
+    const b0=best?best.bearing:seed+45*round;
+    const cands= round===0
+      ? [0,1,2,3].map(k=>({r, b:seed+k*90, n:5, d:k%2?-1:1}))
+      : [{r,b:b0,n:best?best.nVia:5,d:best?best.dir:1},{r,b:b0+35,n:4,d:1},{r,b:b0-35,n:6,d:-1},{r,b:b0+150,n:5,d:-1}];
+    const done=await Promise.allSettled(cands.map(c=>fetchLoop(lat,lon,c,profile,target)));
+    const ok=done.filter(x=>x.status==="fulfilled").map(x=>x.value).filter(x=>x.km>0);
+    for(const rt of ok) if(!best||rt.score<best.score) best=rt;
+    if(best && Math.abs(best.km-target)/target<0.10 && best.overlap<0.12) break;
+    // Ricalibra sulla MEDIANA (robusta agli anelli troncati da mare/zone senza
+    // strade) con fattore smorzato per non oscillare tra un round e l'altro.
+    const kms=ok.map(x=>x.km).sort((a,b)=>a-b), med=kms.length?kms[(kms.length-1)>>1]:0;
+    r=Math.max(0.15, med>0 ? r*Math.min(2,Math.max(0.55,target/med)) : r*0.7);
+  }
+  return best;
+}
+let rgBusy=false;
 async function generateRoute(isRun){
+  if(rgBusy) return; // evita generazioni concorrenti (doppio tap su Genera/Rigenera)
   const profile=isRun?"hiking-mountain":"trekking";
   const out=document.getElementById("rgOut");
-  const target=parseFloat(String(document.getElementById("rgKm").value).replace(",",".")) || (isRun?5:10);
+  const target=Math.min(300, Math.max(1, parseFloat(String(document.getElementById("rgKm").value).replace(",",".")) || (isRun?5:10)));
   if(!lastPos){ requestLocation(); toast("Prima concedi la posizione"); return; }
+  rgBusy=true;
   const btn=document.getElementById("rgGen"); const old=btn.innerHTML;
   btn.innerHTML='<span class="spin"></span> Genero…'; btn.disabled=true;
+  const rb=document.getElementById("rgRegen"); if(rb) rb.disabled=true;
   try{
-    const seed=Math.random()*360;
-    let r=target/9.5, best=null;
-    for(let i=0;i<5;i++){
-      const route=await brouter(loopWaypoints(lastPos.lat,lastPos.lon,r,seed+i*7), profile);
-      best=route;
-      if(!route.km) break;
-      if(Math.abs(route.km-target)/target < 0.12) break;
-      r *= (target/route.km)*0.97; if(r<0.2) r=0.2;
-    }
+    const best=await findBestLoop(lastPos.lat,lastPos.lon,target,profile);
     if(!best || !best.coords || !best.coords.length) throw new Error("vuoto");
     lastRoute=best; renderRoute(best, isRun);
   }catch(e){
     out.innerHTML=`<div class="empty-note">Non sono riuscito a generare il percorso (riprova o cambia i km). Il servizio di routing è gratuito ma a volte è occupato.</div>`;
-  }finally{ btn.innerHTML=old; btn.disabled=false; }
+  }finally{
+    rgBusy=false; btn.innerHTML=old; btn.disabled=false;
+    const rb2=document.getElementById("rgRegen"); if(rb2) rb2.disabled=false;
+  }
 }
 function renderRoute(route, isRun){
   const out=document.getElementById("rgOut"), mins=Math.round(route.timeSec/60);
@@ -1001,6 +1061,7 @@ function renderRoute(route, isRun){
       <div class="rs"><div class="n">${route.km.toFixed(1)} km</div><div class="l">Distanza</div></div>
       <div class="rs"><div class="n">${Math.round(route.ascend)} m</div><div class="l">Dislivello</div></div>
       <div class="rs"><div class="n">${mins} min</div><div class="l">Stima ${isRun?"corsa":"bici"}</div></div>
+      <div class="rs"><div class="n">${Math.round((route.overlap||0)*100)}%</div><div class="l">Strade ripetute</div></div>
     </div>
     <div class="btn-row" style="margin-top:14px">
       <button class="btn ghost sm" id="rgRegen">Rigenera</button>

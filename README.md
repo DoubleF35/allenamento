@@ -6,7 +6,7 @@ Funziona **offline** sul dispositivo (`localStorage`); con l'accesso (gratuito) 
 
 ## Funzioni
 - **Oggi** — cosa è in programma oggi in base al piano (una scheda calisthenics A/B/C/D, bici, corsa o riposo), con checkbox, serie/ripetizioni o durata/km.
-- **Percorso su misura** — nei giorni di bici/corsa: dai la posizione, scegli i km e l'app genera un **anello ad-hoc su strada** (motore gratuito BRouter), con mappa (Leaflet + OpenStreetMap), dislivello e tempo stimato. Esporta in **GPX** (Strava/Komoot/Garmin) o apri in **Google Maps**.
+- **Percorso su misura** — nei giorni di bici/corsa: dai la posizione, scegli i km e l'app genera un **anello ad-hoc su strada** (motore gratuito BRouter): partenza e arrivo coincidono e l'algoritmo confronta più anelli candidati in parallelo scegliendo quello che **minimizza i tratti ripetuti** avanti-e-indietro, oltre a centrare i km voluti. Mappa (Leaflet + OpenStreetMap), dislivello, tempo stimato e % di strade ripetute. Esporta in **GPX** (Strava/Komoot/Garmin) o apri in **Google Maps**.
 - **Storico** — calendario a celle piene: **verde = completato, giallo = parziale, rosso = saltato**, grigio = riposo, col numero del giorno. Tocca un giorno per modificarlo.
 - **Statistiche** — totali, completamento settimana, km/min cardio, grafico peso e progressione per esercizio.
 - **Peso** — log del peso corporeo con grafico.
