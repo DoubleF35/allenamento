@@ -164,6 +164,8 @@ textarea.input{resize:vertical;min-height:64px}
 .btn.ghost:hover{background:var(--paper-2)}
 .btn.sm{padding:12px;font-size:14px;border-radius:var(--radius-sm)}
 .btn:disabled{opacity:.5;box-shadow:none}
+.btn.strava{background:#FC4C02;color:#fff}
+.btn.strava:hover{background:#e34402}
 .btn-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;padding:5px 12px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}
 .pill .swatch{width:9px;height:9px;border-radius:3px}
@@ -427,6 +429,9 @@ textarea.input{resize:vertical;min-height:64px}
     <div class="section-title" style="margin-top:10px">Account &amp; sincronizzazione</div>
     <div class="card" id="syncCard"><div id="syncBody"></div></div>
 
+    <div class="section-title">Strava</div>
+    <div class="card" id="stravaCard"><div id="stravaBody"></div></div>
+
     <div class="section-title">Il mio piano</div>
     <details class="acc" id="planAcc">
       <summary>Personalizza il piano settimanale <span class="chev">›</span></summary>
@@ -490,6 +495,17 @@ const FIREBASE_CONFIG = {
   storageBucket: "workout-e9380.firebasestorage.app",
   messagingSenderId: "179387739267",
   appId: "1:179387739267:web:bf845342582a9e637fffb6"
+};
+
+/* ============================================================
+   CONFIGURAZIONE STRAVA — importa le attività (bici/corsa)
+   clientId: l'ID dell'app API creata su strava.com/settings/api
+   workerUrl: l'URL del Cloudflare Worker che custodisce il client
+   secret e fa lo scambio dei token (vedi README, cartella strava-worker/)
+   ============================================================ */
+const STRAVA_CONFIG = {
+  clientId: "INCOLLA_CLIENT_ID",
+  workerUrl: "https://INCOLLA-WORKER.workers.dev"
 };
 
 /* ============================================================
@@ -567,7 +583,7 @@ function defaultPlan(){
     }
   };
 }
-function defaultSettings(){ return { reminders:{ enabled:false, time:"18:00", days:[1,2,3,4,5,6], lastNotified:"" } }; }
+function defaultSettings(){ return { reminders:{ enabled:false, time:"18:00", days:[1,2,3,4,5,6], lastNotified:"" }, strava:null }; }
 
 // Schede storiche (programmi precedenti): interpretano i vecchi record salvati.
 const LEGACY_WORKOUTS = {
@@ -644,6 +660,7 @@ function migrate(s){
   }
   s.settings = Object.assign(defaultSettings(), s.settings||{});
   s.settings.reminders = Object.assign(defaultSettings().reminders, s.settings.reminders||{});
+  if(s.settings.strava && !s.settings.strava.refresh) s.settings.strava=null;
   // Compat: i record forza salvati con una vecchia scheda non hanno exIds.
   Object.values(s.days).forEach(rec=>{
     if(rec && rec.type==="strength" && !Array.isArray(rec.exIds)){
@@ -1534,7 +1551,7 @@ function show(tab){
   if(tab==="storico") renderCalendar();
   if(tab==="stats") renderStats();
   if(tab==="peso") renderPeso();
-  if(tab==="backup"){ renderBackup(); renderSync(); renderPlanEditor(); renderReminders(); }
+  if(tab==="backup"){ renderBackup(); renderSync(); renderStrava(); renderPlanEditor(); renderReminders(); }
 }
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>show(t.dataset.tab));
 document.getElementById("calPrev").onclick=()=>{ calMonth=new Date(calMonth.getFullYear(),calMonth.getMonth()-1,1); renderCalendar(); };
@@ -1562,7 +1579,7 @@ function rerenderActive(){
   else if(currentTab==="storico") renderCalendar();
   else if(currentTab==="stats") renderStats();
   else if(currentTab==="peso") renderPeso();
-  else if(currentTab==="backup"){ renderBackup(); renderPlanEditor(); renderReminders(); }
+  else if(currentTab==="backup"){ renderBackup(); renderStrava(); renderPlanEditor(); renderReminders(); }
   refreshBadges();
 }
 function initCloud(){
@@ -1648,6 +1665,223 @@ function renderSync(){
 }
 
 /* ============================================================
+   Strava — importa le attività (bici/corsa) degli ultimi 30 giorni.
+   I token vivono in state.settings.strava e seguono l'utente sui
+   dispositivi tramite la sync Firestore esistente. Lo scambio e il
+   refresh dei token passano dal Worker (vedi strava-worker/).
+   Regole di merge: mai sovrascrivere valori inseriti a mano; più
+   attività dello stesso tipo nello stesso giorno si sommano; ogni
+   attività importata è tracciata in rec.stravaIds (import idempotente).
+   ============================================================ */
+const STRAVA_OAUTH_KEY = "allenamento.strava.oauth";
+let stravaSyncing = false;
+
+function stravaConfigured(){
+  return !!(STRAVA_CONFIG && STRAVA_CONFIG.clientId && STRAVA_CONFIG.clientId.indexOf("INCOLLA")===-1
+    && STRAVA_CONFIG.workerUrl && STRAVA_CONFIG.workerUrl.indexOf("INCOLLA")===-1);
+}
+function stravaConn(){ return state.settings.strava || null; }
+
+function stravaConnect(){
+  if(!stravaConfigured()) return;
+  // Chiave anti-CSRF in localStorage (non in state: non deve sincronizzarsi
+  // su altri dispositivi; niente sessionStorage: i redirect da PWA installata
+  // su iOS possono perderla).
+  const st = Math.random().toString(36).slice(2)+Date.now().toString(36);
+  try{ localStorage.setItem(STRAVA_OAUTH_KEY, st); }catch(e){}
+  const redirect = location.origin + location.pathname;
+  location.href = "https://www.strava.com/oauth/authorize"
+    + "?client_id=" + encodeURIComponent(STRAVA_CONFIG.clientId)
+    + "&response_type=code"
+    + "&redirect_uri=" + encodeURIComponent(redirect)
+    + "&approval_prompt=auto"
+    + "&scope=activity:read_all"
+    + "&state=" + encodeURIComponent(st);
+}
+
+function stravaHandleRedirect(){
+  const params = new URLSearchParams(location.search);
+  if(!params.has("code") && !params.has("error")) return;
+  // Pulisce subito l'URL in ogni caso: un code è monouso e non deve
+  // mai essere ripostato a un reload.
+  history.replaceState(null, "", location.pathname);
+  const expected = localStorage.getItem(STRAVA_OAUTH_KEY);
+  try{ localStorage.removeItem(STRAVA_OAUTH_KEY); }catch(e){}
+  if(params.get("error")){ toast("Accesso a Strava annullato","err"); return; }
+  if(!expected || params.get("state")!==expected){ toast("Risposta Strava non valida","err"); return; }
+  const scope = params.get("scope")||"";
+  if(scope.indexOf("activity:read")===-1){ toast("Serve il permesso di lettura delle attività","err"); return; }
+  fetch(STRAVA_CONFIG.workerUrl+"/token",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({code:params.get("code")})
+  }).then(r=>{ if(!r.ok) throw new Error("token "+r.status); return r.json(); })
+  .then(d=>{
+    const a=d.athlete||{};
+    state.settings.strava={
+      athleteId:a.id||0,
+      athleteName:((a.firstname||"")+" "+(a.lastname||"")).trim()||"Atleta",
+      access:d.access_token, refresh:d.refresh_token, expiresAt:d.expires_at,
+      lastSync:0, needsReauth:false
+    };
+    save(); renderStrava(); toast("Strava collegata");
+    stravaSync(true);
+  }).catch(e=>{ console.error("strava token",e); toast("Collegamento a Strava non riuscito","err"); });
+}
+
+function stravaEnsureToken(){
+  const c=stravaConn();
+  if(!c) return Promise.reject(new Error("non collegata"));
+  if(c.expiresAt*1000 - Date.now() > 300000) return Promise.resolve(c.access);
+  return fetch(STRAVA_CONFIG.workerUrl+"/refresh",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({refresh_token:c.refresh})
+  }).then(r=>{
+    if(r.status===400||r.status===401){ c.needsReauth=true; save(); renderStrava(); throw new Error("reauth"); }
+    if(!r.ok) throw new Error("refresh "+r.status);
+    return r.json();
+  }).then(d=>{
+    // Strava può ruotare il refresh token: salvare sempre l'ultimo,
+    // così via Firestore arriva anche agli altri dispositivi.
+    c.access=d.access_token; c.refresh=d.refresh_token; c.expiresAt=d.expires_at;
+    save();
+    return c.access;
+  });
+}
+
+function stravaSync(manual){
+  const c=stravaConn();
+  if(!c || c.needsReauth || stravaSyncing) return;
+  stravaSyncing=true; renderStrava();
+  const done=()=>{ stravaSyncing=false; renderStrava(); };
+  stravaEnsureToken().then(token=>{
+    const after=Math.floor(Date.now()/1000) - 30*86400;
+    const all=[];
+    const page=n=>fetch("https://www.strava.com/api/v3/athlete/activities?after="+after+"&per_page=100&page="+n,
+      {headers:{Authorization:"Bearer "+token}})
+      .then(r=>{
+        if(r.status===401){ c.needsReauth=true; save(); throw new Error("reauth"); }
+        if(r.status===429) throw new Error("rate");
+        if(!r.ok) throw new Error("api "+r.status);
+        return r.json();
+      })
+      .then(list=>{
+        all.push.apply(all,list);
+        return list.length===100 ? page(n+1) : all;
+      });
+    return page(1);
+  }).then(list=>{
+    const n=importStravaActivities(list);
+    stravaConn().lastSync=Date.now();
+    save(); rerenderActive();
+    if(n) toast(n===1?"1 attività importata da Strava":n+" attività importate da Strava");
+    else if(manual) toast("Nessuna nuova attività");
+    done();
+  }).catch(e=>{
+    done();
+    if(e && e.message==="reauth"){ if(manual) toast("Accesso a Strava scaduto: riconnetti","err"); return; }
+    if(e && e.message==="rate"){ toast("Limite Strava raggiunto, riprova più tardi","err"); return; }
+    console.error("strava sync",e);
+    if(manual) toast("Sincronizzazione Strava non riuscita","err");
+  });
+}
+
+function importStravaActivities(list){
+  const BIKE={Ride:1,MountainBikeRide:1,GravelRide:1,VirtualRide:1,EBikeRide:1,EMountainBikeRide:1};
+  const RUN={Run:1,TrailRun:1,VirtualRun:1};
+  let imported=0;
+  (list||[]).forEach(a=>{
+    const sport=a.sport_type||a.type;
+    const t=BIKE[sport]?"bike":RUN[sport]?"run":null;
+    if(!t) return;
+    if((a.moving_time||0)<60 && (a.distance||0)<100) return;
+    const key=String(a.start_date_local||"").slice(0,10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(key)) return;
+    const min=Math.round((a.moving_time||0)/60);
+    const km=Math.round((a.distance||0)/100)/10;
+    let rec=state.days[key];
+    if(rec && Array.isArray(rec.stravaIds) && rec.stravaIds.indexOf(a.id)>-1) return;
+    if(!rec){
+      rec={type:t, note:"", stravaIds:[a.id]};
+      rec[t]={min:min, km:km};
+      state.days[key]=rec; imported++; return;
+    }
+    const cur=rec[t];
+    // Giornata compilata a mano (valori presenti ma nessun import Strava):
+    // probabilmente è la stessa uscita, non toccare né sommare.
+    const hasManual = cur && (Number(cur.min)>0||Number(cur.km)>0) && !(Array.isArray(rec.stravaIds)&&rec.stravaIds.length);
+    if(hasManual) return;
+    rec.stravaIds=Array.isArray(rec.stravaIds)?rec.stravaIds:[];
+    rec.stravaIds.push(a.id);
+    rec[t]={ min:(Number(cur&&cur.min)||0)+min, km:Math.round(((Number(cur&&cur.km)||0)+km)*10)/10 };
+    // Promozione del tipo: il record registra ciò che è successo davvero,
+    // ma una giornata forza con esercizi già spuntati resta forza.
+    const other = t==="bike"?"run":"bike";
+    const strengthDone = rec.type==="strength" && rec.exercises && Object.values(rec.exercises).some(e=>e&&e.done);
+    const otherEmpty = rec.type===other && !(rec[other] && (Number(rec[other].min)>0||Number(rec[other].km)>0));
+    if(rec.type===t){ /* già giusto */ }
+    else if(rec.type==="rest" || otherEmpty || (rec.type==="strength" && !strengthDone)) rec.type=t;
+    imported++;
+  });
+  return imported;
+}
+
+function stravaDisconnect(){
+  if(!confirm("Scollegare Strava? Le attività già importate restano.")) return;
+  const c=stravaConn();
+  if(c && c.access){
+    fetch(STRAVA_CONFIG.workerUrl+"/deauthorize",{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({access_token:c.access})
+    }).catch(()=>{});
+  }
+  state.settings.strava=null;
+  save(); renderStrava(); toast("Strava scollegata");
+}
+
+function stravaAutoSync(){
+  const c=stravaConn();
+  if(!c || c.needsReauth || !navigator.onLine) return;
+  if(Date.now()-(c.lastSync||0) < 3600e3) return;
+  stravaSync(false);
+}
+
+function renderStrava(){
+  const body=document.getElementById("stravaBody"); if(!body) return;
+  if(!stravaConfigured()){
+    body.innerHTML=`<div class="banner">Strava non ancora configurata: compila <code>STRAVA_CONFIG</code> in cima allo script (vedi README).</div>`;
+    return;
+  }
+  const c=stravaConn();
+  if(!c){
+    body.innerHTML=`
+      <div style="font-weight:600;margin-bottom:4px">Importa le uscite da Strava</div>
+      <p class="hint" style="margin-top:4px">Bici e corse registrate su Strava riempiono da sole le tue giornate.</p>
+      <button class="btn sm strava" id="stravaIn" style="margin-top:6px">Connetti Strava</button>`;
+    const b=document.getElementById("stravaIn"); if(b) b.onclick=stravaConnect;
+    return;
+  }
+  if(c.needsReauth){
+    body.innerHTML=`
+      <div style="font-weight:600;margin-bottom:4px">Accesso a Strava scaduto</div>
+      <p class="hint" style="margin-top:4px">Riconnetti l'account per riprendere l'importazione.</p>
+      <button class="btn sm strava" id="stravaIn" style="margin-top:6px">Riconnetti Strava</button>`;
+    const b=document.getElementById("stravaIn"); if(b) b.onclick=stravaConnect;
+    return;
+  }
+  const when = c.lastSync ? new Date(c.lastSync).toLocaleString("it-IT",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}) : "mai";
+  body.innerHTML=`
+    <div class="kv"><span class="muted">Atleta</span><span>${esc(c.athleteName)}</span></div>
+    <div class="kv"><span class="muted">Ultima importazione</span><span>${esc(when)}</span></div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn sm strava" id="stravaSyncBtn"${stravaSyncing?" disabled":""}>${stravaSyncing?"Sincronizzo…":"Sincronizza ora"}</button>
+      <button class="btn ghost sm" id="stravaOut">Disconnetti</button>
+    </div>
+    <p class="hint">Vengono importate le attività degli ultimi 30 giorni. I valori inseriti a mano non vengono mai sovrascritti.</p>`;
+  const s=document.getElementById("stravaSyncBtn"); if(s) s.onclick=()=>stravaSync(true);
+  const o=document.getElementById("stravaOut"); if(o) o.onclick=stravaDisconnect;
+}
+
+/* ============================================================
    Avvio
    ============================================================ */
 function renderAll(){ renderOggi(); renderCalendar(); renderBackup(); renderAcctChip(); }
@@ -1655,7 +1889,9 @@ function init(){
   document.getElementById("topDate").innerHTML=fmtLong(todayDate());
   document.getElementById("wDate").value=todayKey();
   show("oggi");
+  stravaHandleRedirect();
   initCloud();
+  stravaAutoSync();
   if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").then(()=>applyReminders()).catch(()=>{}); }
   else applyReminders();
 }

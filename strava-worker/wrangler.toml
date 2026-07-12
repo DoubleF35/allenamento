@@ -1,0 +1,9 @@
+name = "allenamento-strava"
+main = "worker.js"
+compatibility_date = "2026-07-01"
+
+# Il client ID può stare qui; il secret va impostato con:
+#   npx wrangler secret put STRAVA_CLIENT_SECRET
+# e l'ID con:
+#   npx wrangler secret put STRAVA_CLIENT_ID
+# (oppure entrambi dalla dashboard: Settings → Variables and Secrets)

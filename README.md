@@ -10,7 +10,7 @@ Funziona **offline** sul dispositivo (`localStorage`); con l'accesso (gratuito) 
 - **Storico** — calendario a celle piene: **verde = completato, giallo = parziale, rosso = saltato**, grigio = riposo, col numero del giorno. Tocca un giorno per modificarlo.
 - **Statistiche** — totali, completamento settimana, km/min cardio, grafico peso e progressione per esercizio.
 - **Peso** — log del peso corporeo con grafico.
-- **Profilo** — account/login, **editor del piano**, promemoria e backup JSON.
+- **Profilo** — account/login, **collegamento Strava**, **editor del piano**, promemoria e backup JSON.
 - **Promemoria** — notifiche nei giorni/orario scelti + export **.ics** (promemoria ricorrente nel calendario del telefono, affidabile anche ad app chiusa).
 
 ## Piano predefinito
@@ -50,6 +50,33 @@ In **Authentication → Settings → Authorized domains** aggiungi il dominio di
 
 > Le chiavi in `FIREBASE_CONFIG` sono pubbliche per natura (vivono nel client): la sicurezza è garantita dalle regole Firestore, non dal nasconderle. Per cambiare progetto Firebase, sostituisci `FIREBASE_CONFIG` in cima allo `<script>` di `index.html`.
 
+## Strava (importa le attività, gratis)
+Collega il tuo account Strava da **Profilo → Strava** e le uscite di **bici e corsa** degli ultimi 30 giorni riempiono da sole le giornate dell'app (durata e km), segnandole come completate. L'importazione avviene in automatico all'apertura dell'app (al massimo una volta all'ora) oppure col pulsante **Sincronizza ora**. I valori inseriti a mano **non vengono mai sovrascritti**; più uscite dello stesso tipo nello stesso giorno si sommano.
+
+Per lo scambio dei token OAuth serve un piccolo servizio esterno: il *client secret* di Strava non può stare nel codice pubblico di un sito statico. Si usa un **Cloudflare Worker** (piano Free, senza carta di credito) — il codice è già pronto in `strava-worker/worker.js`.
+
+### 1. Crea l'app API su Strava
+Vai su [strava.com/settings/api](https://www.strava.com/settings/api) e crea un'applicazione:
+- **Nome/categoria**: a piacere (es. "Allenamento").
+- **Website**: `https://doublef35.github.io`
+- **Authorization Callback Domain**: `doublef35.github.io` (solo il dominio: senza `https://` e senza percorso).
+
+Annota **Client ID** e **Client Secret**.
+
+### 2. Crea il Worker su Cloudflare (dalla dashboard, senza terminale)
+1. Registrati gratis su [dash.cloudflare.com](https://dash.cloudflare.com).
+2. **Workers & Pages → Create → Worker**, dai un nome (es. `allenamento-strava`) e fai **Deploy**.
+3. **Edit code** → cancella il contenuto e incolla quello di `strava-worker/worker.js` → **Deploy**.
+4. **Settings → Variables and Secrets** → aggiungi `STRAVA_CLIENT_ID` (tipo *Text*) e `STRAVA_CLIENT_SECRET` (tipo *Secret*) con i valori del passo 1.
+5. Copia l'URL del Worker, es. `https://allenamento-strava.TUONOME.workers.dev`.
+
+> In alternativa, da terminale: `cd strava-worker && npx wrangler deploy`, poi `npx wrangler secret put STRAVA_CLIENT_ID` e `npx wrangler secret put STRAVA_CLIENT_SECRET`.
+
+### 3. Configura l'app
+In cima allo `<script>` di `index.html` compila `STRAVA_CONFIG` con il **Client ID** e l'**URL del Worker**, poi pubblica su Pages. Fatto: da **Profilo → Strava → Connetti Strava** parte l'autorizzazione (lascia spuntata la voce sulle attività private, serve per vederle).
+
+> Note: il permesso richiesto è di **sola lettura** delle attività. I token sono salvati nei tuoi dati (localStorage e, con l'accesso, nel tuo documento Firestore), quindi il collegamento ti segue sui dispositivi. **Disconnetti** revoca l'accesso (revocabile comunque da [strava.com/settings/apps](https://www.strava.com/settings/apps)); "Cancella tutti i dati" scollega anche Strava.
+
 ## Pubblicazione (GitHub Pages)
 Repo → **Settings → Pages → Source: Deploy from a branch → `main` / root**. URL: `https://doublef35.github.io/allenamento/`.
 
@@ -57,6 +84,7 @@ Repo → **Settings → Pages → Source: Deploy from a branch → `main` / root
 - `index.html` — l'app.
 - `manifest.webmanifest`, `icon.svg` — installabilità PWA.
 - `sw.js` — service worker: offline + notifiche promemoria.
+- `strava-worker/` — Cloudflare Worker per l'OAuth di Strava (scambio/refresh token; il client secret vive solo lì).
 
 ## Crediti
-Routing © [BRouter](https://brouter.de) · mappe © [OpenStreetMap](https://www.openstreetmap.org/copyright) · grafici [Chart.js](https://www.chartjs.org) · mappa [Leaflet](https://leafletjs.com) · sync [Firebase](https://firebase.google.com).
+Routing © [BRouter](https://brouter.de) · mappe © [OpenStreetMap](https://www.openstreetmap.org/copyright) · grafici [Chart.js](https://www.chartjs.org) · mappa [Leaflet](https://leafletjs.com) · sync [Firebase](https://firebase.google.com) · attività [Strava](https://www.strava.com).
