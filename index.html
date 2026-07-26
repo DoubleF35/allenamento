@@ -446,6 +446,7 @@ textarea.input{resize:vertical;min-height:64px}
       <div class="kv"><span class="muted">Giorni registrati</span><span id="bDays">0</span></div>
       <div class="kv"><span class="muted">Misure di peso</span><span id="bWeights">0</span></div>
       <div class="kv"><span class="muted">Allenamenti completati</span><span id="bWorkouts">0</span></div>
+      <div class="kv"><span class="muted">Versione app</span><span id="bVer">—</span></div>
     </div>
     <div class="card">
       <div class="section-title" style="margin:0 0 12px">Backup</div>
@@ -515,12 +516,15 @@ const WEEK_DOW = ["Domenica","Lunedì","Martedì","Mercoledì","Giovedì","Vener
 const WEEK_SHORT = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
 const MONTHS = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
 
+/* Versione dell'app: mostrata nel Profilo, allineata alla cache di sw.js. */
+const APP_VERSION = "v11";
 /* Versione del piano: a ogni incremento migrate() ribilancia le schede di default. */
-const PLAN_REV = 4;
+const PLAN_REV = 5;
 /* Piano predefinito — percorso calisthenics con obiettivo handstand push-up e planche.
    Braccia, petto, schiena e addominali ogni giorno di allenamento; gambe ridotte a un
-   richiamo esplosivo (calcio + ~30 km di bici a settimana coprono già il resto).
-   4 giornate di forza (A/B/C/D) + mini blocco braccia & core dopo la bici (scheda E). */
+   richiamo esplosivo (corsa e bici coprono già il resto).
+   4 giornate di forza (A/B/C/D), due con 5 km di corsa annessi, + blocco front lever
+   e tirata (scheda E) dopo l'uscita di mercoledì e sabato. */
 function defaultPlan(){
   return {
     rev: PLAN_REV,
@@ -562,14 +566,15 @@ function defaultPlan(){
           {id:"bicyclecrunch",name:"Bicycle crunch", target:"3 × 30–40", tag:"Addome"},
           {id:"jumpsquat",    name:"Squat jump", target:"2 × 12–15", tag:"Gambe"},
         ]},
-      E:{ name:"Extra bici · Braccia & Core",
-        note:"Mini blocco da 10 minuti dopo la bici: verticale e core per tenere alta la frequenza skill senza rubare recupero. Fermati 2–3 reps prima del cedimento.",
+      E:{ name:"E · Front Lever & Tirata",
+        note:"Blocco di tirata dopo l'uscita: la skill da fresco, poi il volume di schiena · recupero 90 s sulle tenute, 60–75 s sul resto. Quando tieni la tuck front lever 15 sec pulita su tutte le serie, passa alla advanced tuck.",
         exercises:[
-          {id:"ewall",  name:"Verticale al muro (tenuta)", target:"2 × 15–30 sec", tag:"Skill"},
-          {id:"edip",   name:"Dip su panca o sedia", target:"2 × 12–18", tag:"Tricipiti"},
-          {id:"echin",  name:"Trazioni supine", target:"2 × 6–10", tag:"Bicipiti"},
-          {id:"ehollow",name:"Hollow hold", target:"2 × 20–30 sec", tag:"Addome"},
-          {id:"eplank", name:"Plank", target:"2 × 45–60 sec", tag:"Addome"},
+          {id:"etuckfl",    name:"Tuck front lever (tenuta)", target:"4 × 8–15 sec", tag:"Skill"},
+          {id:"eflraise",   name:"Front lever raise (tuck)", target:"3 × 5–8", tag:"Skill"},
+          {id:"earcher",    name:"Trazioni archer", target:"3 × 4–6 per lato", tag:"Schiena"},
+          {id:"erowelev",   name:"Rematore australiano piedi rialzati", target:"3 × 8–12", tag:"Schiena"},
+          {id:"echinclose", name:"Trazioni supine presa stretta", target:"3 × 6–10", tag:"Bicipiti"},
+          {id:"etoesbar",   name:"Toes-to-bar", target:"3 × 8–12", tag:"Addome"},
         ]},
     },
     schedule:{
@@ -616,6 +621,12 @@ const LEGACY_WORKOUTS = {
     {id:"sideplank",   name:"Plank laterale (obliqui)", target:"3 × 30–40 sec per lato"},
     {id:"burpee",      name:"Burpee", target:"3 × 12–15"},
     {id:"mountain",    name:"Mountain climber", target:"3 × 40–50 sec"},
+    // Vecchio mini blocco E "Extra bici · Braccia & Core", sostituito dal blocco front lever.
+    {id:"ewall",       name:"Verticale al muro (tenuta)", target:"2 × 15–30 sec"},
+    {id:"edip",        name:"Dip su panca o sedia", target:"2 × 12–18"},
+    {id:"echin",       name:"Trazioni supine", target:"2 × 6–10"},
+    {id:"ehollow",     name:"Hollow hold", target:"2 × 20–30 sec"},
+    {id:"eplank",      name:"Plank", target:"2 × 45–60 sec"},
   ],
 };
 
@@ -664,6 +675,11 @@ function migrate(s){
       [1,5].forEach(dow=>{ const day=s.plan.schedule[dow]; if(day && day.type==="strength" && !day.cardio) day.cardio={type:"run", km:5, min:30}; });
       s.plan.schedule[3] = Object.assign({}, dp.schedule[3]);
       s.plan.schedule[6] = Object.assign({}, dp.schedule[6]);
+    }
+    if(rev < 5){
+      // rev 5: il blocco dopo l'uscita diventa una seduta di tirata (front lever)
+      // al posto del vecchio mini blocco braccia & core.
+      s.plan.workouts.E = dp.workouts.E;
     }
     if(rev < PLAN_REV) s.plan.rev = PLAN_REV;
   }
@@ -1602,6 +1618,7 @@ function renderBackup(){
   document.getElementById("bDays").textContent=Object.keys(state.days).length;
   document.getElementById("bWeights").textContent=state.weight.length;
   document.getElementById("bWorkouts").textContent=countCompletedWorkouts();
+  document.getElementById("bVer").textContent=`${APP_VERSION} · piano rev ${state.plan.rev||0}`;
 }
 function doExport(){
   const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}));
@@ -1985,8 +2002,28 @@ function init(){
   stravaHandleRedirect();
   initCloud();
   stravaAutoSync();
-  if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").then(()=>applyReminders()).catch(()=>{}); }
+  if("serviceWorker" in navigator) initServiceWorker();
   else applyReminders();
+}
+/* Registrazione del service worker + aggiornamento automatico: quando una nuova
+   versione prende il controllo la pagina si ricarica una volta sola, così un
+   aggiornamento pubblicato si vede senza svuotare la cache a mano. */
+let swReloading=false;
+function initServiceWorker(){
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register("./sw.js")
+    .then(reg=>{ applyReminders(); if(reg.update) reg.update().catch(()=>{}); })
+    .catch(()=>applyReminders());
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{
+    // Alla primissima visita non c'era nessun controller: nessuna ricarica da fare.
+    if(!hadController || swReloading) return;
+    swReloading=true; toast("Nuova versione: ricarico…");
+    setTimeout(()=>location.reload(),900);
+  });
+  document.addEventListener("visibilitychange",()=>{
+    if(document.hidden) return;
+    navigator.serviceWorker.getRegistration().then(r=>{ if(r && r.update) r.update().catch(()=>{}); }).catch(()=>{});
+  });
 }
 init();
 </script>

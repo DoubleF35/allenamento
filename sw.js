@@ -3,11 +3,14 @@
    - notifiche promemoria via periodicSync (best-effort) + notificationclick
    La config promemoria è scritta dalla pagina in IndexedDB (db "allenamento-rem", store "kv", chiave "config"). */
 
-const CACHE = "allenamento-v10";
+const CACHE = "allenamento-v11";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()).catch(() => {}));
+  // cache:"reload" ignora la cache HTTP del browser: senza questo GitHub Pages
+  // (max-age=600 sull'HTML) può far installare una copia già vecchia.
+  const fresh = SHELL.map((u) => new Request(u, { cache: "reload" }));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(fresh)).then(() => self.skipWaiting()).catch(() => {}));
 });
 
 self.addEventListener("activate", (e) => {
@@ -22,7 +25,18 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   const sameOrigin = url.origin === self.location.origin;
   if (req.mode === "navigate") {
-    e.respondWith(fetch(req).catch(() => caches.match("./index.html")));
+    // Sempre dalla rete e senza cache HTTP, così un aggiornamento pubblicato si vede
+    // al primo caricamento. Uso req.url (non req) perché una Request in modalità
+    // "navigate" non è ricostruibile; l'URL preserva anche la query (callback OAuth).
+    e.respondWith(
+      fetch(req.url, { cache: "reload", credentials: "same-origin" })
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put("./index.html", copy)).catch(() => {});
+          return res;
+        })
+        .catch(() => caches.match("./index.html"))
+    );
     return;
   }
   if (sameOrigin) {

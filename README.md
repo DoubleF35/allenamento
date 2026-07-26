@@ -14,21 +14,21 @@ Funziona **offline** sul dispositivo (`localStorage`); con l'accesso (gratuito) 
 - **Promemoria** — notifiche nei giorni/orario scelti + export **.ics** (promemoria ricorrente nel calendario del telefono, affidabile anche ad app chiusa).
 
 ## Piano predefinito
-Percorso calisthenics con obiettivo **handstand push-up e planche**: braccia, petto, schiena e addominali ogni giorno di allenamento; gambe ridotte a un richiamo esplosivo (la corsa e la bici coprono il resto). 4 giornate di forza — due delle quali con **5 km di corsa** annessi — + una giornata di sola corsa + una di bici (con mini blocco braccia & core) + domenica di riposo.
+Percorso calisthenics con obiettivo **handstand push-up e planche**: braccia, petto, schiena e addominali ogni giorno di allenamento; gambe ridotte a un richiamo esplosivo (la corsa e la bici coprono il resto). 4 giornate di forza — due delle quali con **5 km di corsa** annessi — + una giornata di sola corsa + una di bici (con il blocco front lever & tirata) + domenica di riposo.
 
 | Giorno | Attività |
 |---|---|
 | Lunedì | A · Verticale & Spinta (skill HSPU) + 5 km di corsa |
 | Martedì | B · Trazione & Schiena |
-| Mercoledì | Corsa (≈ 5 km) + mini blocco braccia & core |
+| Mercoledì | Corsa (≈ 5 km) + E · Front Lever & Tirata |
 | Giovedì | C · Planche & Petto (skill planche) |
 | Venerdì | D · Braccia & Core + 5 km di corsa |
-| Sabato | Bici (almeno 10 km) + mini blocco braccia & core |
+| Sabato | Bici (almeno 10 km) + E · Front Lever & Tirata |
 | Domenica | Riposo · mobilità polsi e spalle |
 
 Nelle giornate di forza con uscita annessa la giornata è **completata** solo quando hai spuntato tutti gli esercizi *e* registrato la corsa. L'uscita extra si aggiunge, si cambia o si toglie da **Profilo → Personalizza il piano**.
 
-Ogni utente può cambiarlo da **Profilo → Personalizza il piano**: tipo di ogni giorno (forza A/B/C/D, bici, corsa, riposo), km/durata ed esercizi delle schede (compresa la scheda E, il mini blocco post-bici).
+Ogni utente può cambiarlo da **Profilo → Personalizza il piano**: tipo di ogni giorno (forza A/B/C/D, bici, corsa, riposo), km/durata ed esercizi delle schede (compresa la scheda E, il blocco di tirata che segue l'uscita).
 
 ## Login multi-utente (Firebase, gratis)
 La sync usa **Firebase** (Auth con Google + Firestore), gratuito per questo uso. La config è già nel codice (progetto `workout-e9380`). Per far funzionare l'accesso **a tutti** servono due cose nella console Firebase:
