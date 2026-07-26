@@ -5,7 +5,7 @@ App per tracciare allenamento di calisthenics, bici e corsa. **PWA** installabil
 Funziona **offline** sul dispositivo (`localStorage`); con l'accesso (gratuito) i dati si sincronizzano nel **cloud** in tempo reale e ti seguono su ogni dispositivo. È **multi-utente**: ogni persona accede col proprio account e ha i propri dati e il proprio piano.
 
 ## Funzioni
-- **Oggi** — cosa è in programma oggi in base al piano (una scheda calisthenics A/B/C/D, bici, corsa o riposo), con checkbox, serie/ripetizioni o durata/km.
+- **Oggi** — cosa è in programma oggi in base al piano (una scheda calisthenics A/B/C/D, con o senza uscita annessa, oppure bici, corsa o riposo), con checkbox, serie/ripetizioni o durata/km e il **timer della durata** in ogni giornata di allenamento.
 - **Percorso su misura** — nei giorni di bici/corsa: dai la posizione, scegli i km e l'app genera un **anello ad-hoc su strada** (motore gratuito BRouter): partenza e arrivo coincidono e l'algoritmo confronta più anelli candidati in parallelo scegliendo quello che **minimizza i tratti ripetuti** avanti-e-indietro, oltre a centrare i km voluti. Mappa (Leaflet + OpenStreetMap), dislivello, tempo stimato e % di strade ripetute. Esporta in **GPX** (Strava/Komoot/Garmin) o apri in **Google Maps**.
 - **Storico** — calendario a celle piene: **verde = completato, giallo = parziale, rosso = saltato**, grigio = riposo, col numero del giorno. Tocca un giorno per modificarlo.
 - **Statistiche** — totali, completamento settimana, km/min cardio, grafico peso e progressione per esercizio.
@@ -14,17 +14,19 @@ Funziona **offline** sul dispositivo (`localStorage`); con l'accesso (gratuito) 
 - **Promemoria** — notifiche nei giorni/orario scelti + export **.ics** (promemoria ricorrente nel calendario del telefono, affidabile anche ad app chiusa).
 
 ## Piano predefinito
-Percorso calisthenics con obiettivo **handstand push-up e planche**: braccia, petto, schiena e addominali ogni giorno di allenamento; gambe ridotte a un richiamo esplosivo (calcio e bici coprono il resto). 4 giornate di forza + 2 uscite in bici (con mini blocco braccia & core) + domenica di riposo.
+Percorso calisthenics con obiettivo **handstand push-up e planche**: braccia, petto, schiena e addominali ogni giorno di allenamento; gambe ridotte a un richiamo esplosivo (la corsa e la bici coprono il resto). 4 giornate di forza — due delle quali con **5 km di corsa** annessi — + una giornata di sola corsa + una di bici (con mini blocco braccia & core) + domenica di riposo.
 
 | Giorno | Attività |
 |---|---|
-| Lunedì | A · Verticale & Spinta (skill HSPU) |
+| Lunedì | A · Verticale & Spinta (skill HSPU) + 5 km di corsa |
 | Martedì | B · Trazione & Schiena |
-| Mercoledì | Bici media (≈ 12 km) + mini blocco braccia & core |
+| Mercoledì | Corsa (≈ 5 km) + mini blocco braccia & core |
 | Giovedì | C · Planche & Petto (skill planche) |
-| Venerdì | D · Braccia & Core |
-| Sabato | Bici lunga (≈ 18 km) + mini blocco braccia & core |
+| Venerdì | D · Braccia & Core + 5 km di corsa |
+| Sabato | Bici (almeno 10 km) + mini blocco braccia & core |
 | Domenica | Riposo · mobilità polsi e spalle |
+
+Nelle giornate di forza con uscita annessa la giornata è **completata** solo quando hai spuntato tutti gli esercizi *e* registrato la corsa. L'uscita extra si aggiunge, si cambia o si toglie da **Profilo → Personalizza il piano**.
 
 Ogni utente può cambiarlo da **Profilo → Personalizza il piano**: tipo di ogni giorno (forza A/B/C/D, bici, corsa, riposo), km/durata ed esercizi delle schede (compresa la scheda E, il mini blocco post-bici).
 

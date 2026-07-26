@@ -516,7 +516,7 @@ const WEEK_SHORT = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
 const MONTHS = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
 
 /* Versione del piano: a ogni incremento migrate() ribilancia le schede di default. */
-const PLAN_REV = 3;
+const PLAN_REV = 4;
 /* Piano predefinito — percorso calisthenics con obiettivo handstand push-up e planche.
    Braccia, petto, schiena e addominali ogni giorno di allenamento; gambe ridotte a un
    richiamo esplosivo (calcio + ~30 km di bici a settimana coprono già il resto).
@@ -574,12 +574,12 @@ function defaultPlan(){
     },
     schedule:{
       0:{type:"rest", label:"Riposo", hint:"Recupero completo · mobilità di polsi e spalle"},
-      1:{type:"strength", workout:"A"},
+      1:{type:"strength", workout:"A", cardio:{type:"run", km:5, min:30}},
       2:{type:"strength", workout:"B"},
-      3:{type:"bike", label:"Bici media", km:12, min:40, hint:"≈ 12 km · ritmo costante", mini:"E"},
+      3:{type:"run", label:"Corsa", km:5, min:30, hint:"≈ 5 km · ritmo libero", mini:"E"},
       4:{type:"strength", workout:"C"},
-      5:{type:"strength", workout:"D"},
-      6:{type:"bike", label:"Bici lunga", km:18, min:70, hint:"≈ 18 km · fondo lungo", mini:"E"},
+      5:{type:"strength", workout:"D", cardio:{type:"run", km:5, min:30}},
+      6:{type:"bike", label:"Bici", km:10, min:40, hint:"almeno 10 km", mini:"E"},
     }
   };
 }
@@ -646,7 +646,8 @@ function migrate(s){
     const dp=defaultPlan();
     s.plan.workouts = s.plan.workouts || dp.workouts;
     s.plan.schedule = s.plan.schedule || dp.schedule;
-    if((s.plan.rev||0) < PLAN_REV){
+    const rev = s.plan.rev||0;
+    if(rev < 3){
       // rev 3: percorso calisthenics (verticale + planche), braccia e addominali ogni giorno,
       // gambe ridotte a richiamo. Aggiorna le schede di default e aggiunge il mini blocco E
       // dopo la bici, mantenendo i giorni della settimana e lo storico già registrato.
@@ -655,8 +656,16 @@ function migrate(s){
         const day=s.plan.schedule[dow];
         if(day && (day.type==="bike"||day.type==="run") && !day.mini) day.mini="E";
       });
-      s.plan.rev = PLAN_REV;
     }
+    if(rev < 4){
+      // rev 4: corsa da 5 km il lunedì e il venerdì insieme alla forza, mercoledì di corsa
+      // al posto della bici media, sabato di bici da almeno 10 km. Gli altri giorni e gli
+      // esercizi personalizzati restano come sono.
+      [1,5].forEach(dow=>{ const day=s.plan.schedule[dow]; if(day && day.type==="strength" && !day.cardio) day.cardio={type:"run", km:5, min:30}; });
+      s.plan.schedule[3] = Object.assign({}, dp.schedule[3]);
+      s.plan.schedule[6] = Object.assign({}, dp.schedule[6]);
+    }
+    if(rev < PLAN_REV) s.plan.rev = PLAN_REV;
   }
   s.settings = Object.assign(defaultSettings(), s.settings||{});
   s.settings.reminders = Object.assign(defaultSettings().reminders, s.settings.reminders||{});
@@ -703,13 +712,13 @@ function workoutForDay(key, sched, rec){ if(sched.type!=="strength") return null
 function dayStatus(key){
   const d=dateFromKey(key), sched=scheduleFor(d), rec=state.days[key], isPast=d<todayDate();
   if(sched.type==="rest"){
-    if(rec && rec.type && rec.type!=="rest") return statusOf(rec,isPast);
+    if(rec && rec.type && rec.type!=="rest") return statusOf(rec,isPast,sched);
     return "rest";
   }
   if(!rec || !rec.type) return isPast ? "skipped" : "pending";
-  return statusOf(rec,isPast);
+  return statusOf(rec,isPast,sched);
 }
-function statusOf(rec,isPast){
+function statusOf(rec,isPast,sched){
   if(rec.type==="bike" || rec.type==="run"){
     const o = rec[rec.type] || {};
     if(Number(o.min)>0 || Number(o.km)>0) return "completed";
@@ -720,9 +729,16 @@ function statusOf(rec,isPast){
   if(rec.type==="strength"){
     const w = WK(rec.workout);
     const ids = (Array.isArray(rec.exIds) && rec.exIds.length) ? rec.exIds : w.exercises.map(e=>e.id);
-    const total = ids.length;
+    let total = ids.length;
     let done = 0;
     ids.forEach(id=>{ if(rec.exercises && rec.exercises[id] && rec.exercises[id].done) done++; });
+    // Uscita cardio annessa alla scheda: vale come una voce in più della checklist.
+    // Conta se il piano la prevede, oppure se è stata comunque registrata (es. import
+    // da Strava): così togliere l'uscita dal piano non blocca le giornate già create.
+    const req = (sched && sched.cardio && sched.cardio.type) || null;
+    const logged = t=>rec[t] && (Number(rec[t].min)>0 || Number(rec[t].km)>0);
+    const ct = req || (logged("bike") ? "bike" : logged("run") ? "run" : null);
+    if(ct && rec[ct]){ total++; if(logged(ct)) done++; }
     if(total>0 && done>=total) return "completed";
     if(done>0) return "partial";
     return isPast ? "skipped" : "pending";
@@ -757,6 +773,8 @@ function ensureRecord(key){
   if(sched.type==="bike" && !rec.bike) rec.bike={min:"",km:""};
   if(sched.type==="run" && !rec.run) rec.run={min:"",km:""};
   if((sched.type==="bike"||sched.type==="run") && sched.mini && !rec.exercises) rec.exercises={};
+  // Giornata di forza con uscita cardio annessa (es. scheda A + 5 km di corsa).
+  if(sched.type==="strength" && sched.cardio && !rec[sched.cardio.type]) rec[sched.cardio.type]={min:"",km:""};
   return rec;
 }
 
@@ -808,6 +826,59 @@ function bindWeekStrip(root){
   root.querySelectorAll(".ws-day").forEach(b=>b.onclick=()=>openDayEditor(b.dataset.day));
 }
 
+/* Timer durata allenamento — presente in tutte le giornate di allenamento (forza e cardio).
+   Lo stato vive nel record (durSec + timer), così segue ricariche e dispositivi. */
+function timerCardHtml(){
+  return `
+    <div class="card timer">
+      <div class="t-info"><div class="t-time" id="tDisp">00:00</div><div class="t-label">Durata allenamento</div></div>
+      <div class="t-actions"><button class="btn sm" id="tToggle">Avvia</button><button class="btn ghost sm" id="tReset">Azzera</button></div>
+    </div>`;
+}
+function bindTimer(rec){
+  const tDisp=document.getElementById("tDisp"), tToggle=document.getElementById("tToggle"), tReset=document.getElementById("tReset");
+  if(!tDisp || !tToggle || !tReset) return;
+  rec.timer = rec.timer || { run:false, acc: Number(rec.durSec)||0, t0:0 };
+  const paint=()=>{ tDisp.textContent=fmtClock(timerElapsed(rec)); tDisp.classList.toggle("run",!!rec.timer.run); tToggle.textContent=rec.timer.run?"Pausa":((rec.timer.acc||0)>0?"Riprendi":"Avvia"); };
+  const startTick=()=>{ if(timerInt) clearInterval(timerInt); timerInt=setInterval(paint,1000); };
+  const stopTick=()=>{ if(timerInt){ clearInterval(timerInt); timerInt=null; } };
+  paint(); if(rec.timer.run) startTick();
+  tToggle.onclick=()=>{
+    if(rec.timer.run){ rec.timer.acc=timerElapsed(rec); rec.timer.run=false; rec.timer.t0=0; stopTick(); }
+    else { rec.timer.t0=Date.now(); rec.timer.run=true; startTick(); }
+    rec.durSec=Math.round(timerElapsed(rec)); save(); paint();
+  };
+  tReset.onclick=()=>{ rec.timer={run:false,acc:0,t0:0}; rec.durSec=0; stopTick(); save(); paint(); };
+}
+/* Chiude il timer e fissa la durata nel record: usato da "Completa giornata". */
+function flushTimer(rec){
+  if(!rec.timer) return;
+  if(rec.timer.run){ rec.timer.acc=timerElapsed(rec); rec.timer.run=false; rec.timer.t0=0; }
+  rec.durSec=Math.round(timerElapsed(rec));
+}
+/* Card del percorso generato su misura, condivisa dai giorni cardio e dalle giornate
+   di forza con uscita annessa. */
+function routeCardHtml(kmTarget, isRun){
+  return `
+    <div class="card" style="margin-top:14px">
+      <div class="section-title" style="margin:0 0 12px">Percorso su misura</div>
+      <div class="row2">
+        <div class="field" style="margin:0"><label>Km voluti</label><input class="input" id="rgKm" type="number" inputmode="decimal" step="0.5" value="${kmTarget}"></div>
+        <button class="btn ghost sm" id="rgLoc" style="height:48px;align-self:end">Usa la mia posizione</button>
+      </div>
+      <div class="mini" id="rgPos" style="margin-top:8px">Concedi la posizione e premi “Genera percorso”.</div>
+      <button class="btn sm" id="rgGen" style="margin-top:12px">Genera percorso ${isRun?"a piedi":"in bici"}</button>
+      <div id="rgOut"></div>
+    </div>`;
+}
+function bindRouteCard(isRun){
+  const loc=document.getElementById("rgLoc"), gen=document.getElementById("rgGen");
+  if(!loc || !gen) return;
+  loc.onclick=()=>requestLocation();
+  gen.onclick=()=>generateRoute(isRun);
+  if(lastPos) document.getElementById("rgPos").textContent=`Posizione pronta (${lastPos.lat.toFixed(4)}, ${lastPos.lon.toFixed(4)}).`;
+}
+
 function renderOggi(){
   if(routeMap){ try{routeMap.remove();}catch(e){} routeMap=null; routeLayer=null; }
   if(timerInt){ clearInterval(timerInt); timerInt=null; }
@@ -852,6 +923,7 @@ function renderOggi(){
         ${heroFoot(streak)}
       </div>
       ${weekStrip()}
+      ${timerCardHtml()}
       <div class="card">
         <div class="row2">
           <div class="field" style="margin:0"><label>Durata (min)</label><input class="input" id="aMin" type="number" inputmode="numeric" placeholder="${sched.min||50}" value="${o.min??""}"></div>
@@ -867,33 +939,27 @@ function renderOggi(){
       </div>`:""}
       <button class="btn" id="completeBtn">Completa giornata</button>
       <div class="note-saved" id="aMsg">Giornata salvata</div>
-
-      <div class="card" style="margin-top:14px">
-        <div class="section-title" style="margin:0 0 12px">Percorso su misura</div>
-        <div class="row2">
-          <div class="field" style="margin:0"><label>Km voluti</label><input class="input" id="rgKm" type="number" inputmode="decimal" step="0.5" value="${kmTarget}"></div>
-          <button class="btn ghost sm" id="rgLoc" style="height:48px;align-self:end">Usa la mia posizione</button>
-        </div>
-        <div class="mini" id="rgPos" style="margin-top:8px">Concedi la posizione e premi “Genera percorso”.</div>
-        <button class="btn sm" id="rgGen" style="margin-top:12px">Genera percorso ${isRun?"a piedi":"in bici"}</button>
-        <div id="rgOut"></div>
-      </div>`;
+      ${routeCardHtml(kmTarget, isRun)}`;
 
     bindWeekStrip(el);
+    bindTimer(rec);
     if(mini) bindExerciseRows(el, rec);
     const sync=()=>{ rec[t]={min:document.getElementById("aMin").value, km:document.getElementById("aKm").value}; rec.note=document.getElementById("aNote").value; save(); };
     ["aMin","aKm","aNote"].forEach(id=>document.getElementById(id).addEventListener("input",sync));
-    document.getElementById("completeBtn").onclick=()=>{ sync(); flash("aMsg"); const o2=rec[t]; toast((Number(o2.min)>0||Number(o2.km)>0)?"Giornata completata":"Inserisci durata o distanza"); renderOggi(); refreshBadges(); };
-    document.getElementById("rgLoc").onclick=()=>requestLocation();
-    document.getElementById("rgGen").onclick=()=>generateRoute(isRun);
-    if(lastPos) document.getElementById("rgPos").textContent=`Posizione pronta (${lastPos.lat.toFixed(4)}, ${lastPos.lon.toFixed(4)}).`;
+    document.getElementById("completeBtn").onclick=()=>{ flushTimer(rec); sync(); flash("aMsg"); const o2=rec[t]; toast((Number(o2.min)>0||Number(o2.km)>0)?"Giornata completata":"Inserisci durata o distanza"); renderOggi(); refreshBadges(); };
+    bindRouteCard(isRun);
     return;
   }
 
-  // STRENGTH
+  // STRENGTH (eventualmente con un'uscita cardio annessa: sched.cardio)
   const w = WK(rec.workout);
   const exHtml = w.exercises.map((e,i)=>exRowHtml(e,rec,key,i)).join("");
   const mark = String(rec.workout||"").slice(0,1).toUpperCase();
+  const cardio = sched.cardio;
+  const ct = cardio ? cardio.type : null;
+  const co = ct ? (rec[ct] || {min:"",km:""}) : null;
+  const cIsRun = ct==="run";
+  const cKmTarget = cardio ? (cardio.km || (cIsRun?5:10)) : 0;
 
   el.innerHTML = `
     <div class="card hero">
@@ -904,39 +970,37 @@ function renderOggi(){
       ${heroFoot(streak)}
     </div>
     ${weekStrip()}
-    <div class="card timer">
-      <div class="t-info"><div class="t-time" id="tDisp">00:00</div><div class="t-label">Durata allenamento</div></div>
-      <div class="t-actions"><button class="btn sm" id="tToggle">Avvia</button><button class="btn ghost sm" id="tReset">Azzera</button></div>
-    </div>
+    ${timerCardHtml()}
     <div class="card ex-list">${exHtml}</div>
+    ${cardio?`
+    <div class="card">
+      <div class="card-title">${cIsRun?"Corsa":"Bici"} del giorno</div>
+      <p class="card-sub">Obiettivo ${cKmTarget} km${cardio.min?` · ≈ ${cardio.min} min`:""}</p>
+      <div class="row2" style="margin-top:4px">
+        <div class="field" style="margin:0"><label>Durata (min)</label><input class="input" id="aMin" type="number" inputmode="numeric" placeholder="${cardio.min||30}" value="${co.min??""}"></div>
+        <div class="field" style="margin:0"><label>Distanza (km)</label><input class="input" id="aKm" type="number" inputmode="decimal" step="0.1" placeholder="${cKmTarget}" value="${co.km??""}"></div>
+      </div>
+    </div>`:""}
     <div class="card"><div class="field" style="margin:0"><label>Nota del giorno</label><textarea class="input" id="sNote" placeholder="Sensazioni, dolori, energia…">${esc(rec.note||"")}</textarea></div></div>
     <button class="btn" id="completeBtn">Completa giornata</button>
-    <div class="note-saved" id="sMsg"></div>`;
+    <div class="note-saved" id="sMsg"></div>
+    ${cardio?routeCardHtml(cKmTarget, cIsRun):""}`;
 
   bindWeekStrip(el);
+  bindTimer(rec);
   bindExerciseRows(el, rec);
   document.getElementById("sNote").addEventListener("input",e=>{ rec.note=e.target.value; save(); });
-
-  // Timer durata: avvia / pausa / azzera, persistito nel record così segue ricariche e dispositivi.
-  rec.timer = rec.timer || { run:false, acc: Number(rec.durSec)||0, t0:0 };
-  const tDisp=document.getElementById("tDisp"), tToggle=document.getElementById("tToggle"), tReset=document.getElementById("tReset");
-  const paintTimer=()=>{ tDisp.textContent=fmtClock(timerElapsed(rec)); tDisp.classList.toggle("run",!!rec.timer.run); tToggle.textContent=rec.timer.run?"Pausa":((rec.timer.acc||0)>0?"Riprendi":"Avvia"); };
-  const startTick=()=>{ if(timerInt) clearInterval(timerInt); timerInt=setInterval(paintTimer,1000); };
-  const stopTick=()=>{ if(timerInt){ clearInterval(timerInt); timerInt=null; } };
-  paintTimer(); if(rec.timer.run) startTick();
-  tToggle.onclick=()=>{
-    if(rec.timer.run){ rec.timer.acc=timerElapsed(rec); rec.timer.run=false; rec.timer.t0=0; stopTick(); }
-    else { rec.timer.t0=Date.now(); rec.timer.run=true; startTick(); }
-    rec.durSec=Math.round(timerElapsed(rec)); save(); paintTimer();
-  };
-  tReset.onclick=()=>{ rec.timer={run:false,acc:0,t0:0}; rec.durSec=0; stopTick(); save(); paintTimer(); };
+  if(cardio){
+    const syncCardio=()=>{ rec[ct]={min:document.getElementById("aMin").value, km:document.getElementById("aKm").value}; save(); };
+    ["aMin","aKm"].forEach(id=>document.getElementById(id).addEventListener("input",syncCardio));
+    bindRouteCard(cIsRun);
+  }
 
   document.getElementById("completeBtn").onclick=()=>{
-    if(rec.timer && rec.timer.run){ rec.timer.acc=timerElapsed(rec); rec.timer.run=false; rec.timer.t0=0; }
-    rec.durSec=Math.round(timerElapsed(rec));
+    flushTimer(rec);
     save(); const st=dayStatus(key), msgEl=document.getElementById("sMsg");
     if(st==="completed"){ msgEl.textContent="Allenamento completato"; toast("Allenamento completato"); }
-    else if(st==="partial"){ msgEl.textContent="Salvato come parziale"; toast("Parziale: spunta tutti gli esercizi per completare"); }
+    else if(st==="partial"){ msgEl.textContent="Salvato come parziale"; toast(cardio?"Parziale: completa esercizi e uscita":"Parziale: spunta tutti gli esercizi per completare"); }
     else { msgEl.textContent="Niente di spuntato"; toast("Spunta gli esercizi svolti"); }
     msgEl.classList.add("show"); setTimeout(()=>msgEl.classList.remove("show"),2200);
     renderOggi(); refreshBadges();
@@ -1131,12 +1195,14 @@ function weekProgress(){
 }
 function activityTotals(){
   let min=0,km=0;
-  for(const key in state.days){ const r=state.days[key]; ["bike","run"].forEach(t=>{ if(r.type===t && r[t]){ min+=Number(r[t].min)||0; km+=Number(r[t].km)||0; } }); }
+  // Somma ogni uscita registrata, anche quando è annessa a una giornata di forza
+  // (lunedì/venerdì) o importata da Strava su un giorno di altro tipo.
+  for(const key in state.days){ const r=state.days[key]; ["bike","run"].forEach(t=>{ if(r[t]){ min+=Number(r[t].min)||0; km+=Number(r[t].km)||0; } }); }
   return {min,km};
 }
 function workoutDurations(){
   const out=[];
-  Object.keys(state.days).sort().forEach(k=>{ const r=state.days[k]; if(r && r.type==="strength" && Number(r.durSec)>0) out.push({key:k, sec:Number(r.durSec)}); });
+  Object.keys(state.days).sort().forEach(k=>{ const r=state.days[k]; if(r && r.type!=="rest" && Number(r.durSec)>0) out.push({key:k, sec:Number(r.durSec)}); });
   return out;
 }
 function parseReps(s){ if(!s) return []; return (String(s).match(/\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFloat(x.replace(",","."))); }
@@ -1186,7 +1252,7 @@ function renderStats(){
     <div class="stat"><div class="n">${computeStreak()}</div><div class="l">Streak</div><div class="sub">giorni consecutivi</div></div>
     <div class="stat"><div class="n">${bt.min}</div><div class="l">Minuti cardio</div><div class="sub">bici + corsa</div></div>
     <div class="stat"><div class="n">${(Math.round(bt.km*10)/10).toLocaleString("it-IT")}</div><div class="l">Km totali</div><div class="sub">bici + corsa</div></div>
-    <div class="stat"><div class="n">${durs.length?avgMin:"—"}</div><div class="l">Durata media</div><div class="sub">min · allenamenti forza</div></div>
+    <div class="stat"><div class="n">${durs.length?avgMin:"—"}</div><div class="l">Durata media</div><div class="sub">min · allenamenti</div></div>
     <div class="stat"><div class="n">${durs.length?lastMin:"—"}</div><div class="l">Ultima durata</div><div class="sub">min</div></div>`;
   document.getElementById("weekCard").innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:baseline">
@@ -1202,7 +1268,7 @@ function renderStats(){
 function renderDurations(){
   const durs=workoutDurations(), list=document.getElementById("durList");
   if(chartDur){ chartDur.destroy(); chartDur=null; }
-  if(!durs.length){ list.innerHTML=`<div class="empty-note">Avvia il timer durante un allenamento di forza: la durata resta salvata e qui vedrai se migliori.</div>`; return; }
+  if(!durs.length){ list.innerHTML=`<div class="empty-note">Avvia il timer durante un allenamento: la durata resta salvata e qui vedrai se migliori.</div>`; return; }
   chartDur=new Chart(document.getElementById("durChart"),{
     type:"line",
     data:{ labels:durs.map(d=>fmtShort(dateFromKey(d.key))), datasets:[{ label:"Durata (min)", data:durs.map(d=>Math.round(d.sec/60*10)/10), borderColor:getC("--accent"), backgroundColor:"rgba(47,122,80,.10)", fill:true, tension:.3, pointRadius:3, pointBackgroundColor:getC("--accent") }]},
@@ -1325,12 +1391,23 @@ function openDayEditor(key){
   const wid=rec.workout||workoutForDay(key,sched,rec), w=WK(wid);
   const exList=(Array.isArray(rec.exIds)&&rec.exIds.length) ? rec.exIds.map(id=>exLookup(id)) : w.exercises;
   const exHtml=exList.map(e=>{ const er=rec.exercises[e.id]||{}; const per=suggestPerSet(e.id,key); const sug=per!==null?`${targetSets(e.target)} × ${per}${targetSuffix(e.target)}`:""; return `<div class="ex"><div class="check ${er.done?"on":""}" data-ex="${e.id}" role="checkbox" tabindex="0"><svg viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></svg></div><div class="ex-body"><div class="ex-name">${esc(e.name)}</div>${sug?`<div class="ex-suggest" title="Proposta in automatico dai tuoi ultimi allenamenti">Consigliato <strong>${esc(sug)}</strong></div>`:""}${e.target?`<div class="ex-target">Obiettivo ${esc(e.target)}</div>`:""}<input class="ex-reps" data-reps="${e.id}" placeholder="es. 12, 11, 10" value="${esc(er.reps||"")}"></div></div>`; }).join("");
-  inner+=`<div class="msub">${esc(w.name)}${future?" · in programma":""}</div><div style="margin-bottom:14px">${exHtml}</div><div class="field"><label>Nota</label><textarea class="input" id="mNote" placeholder="Sensazioni…">${esc(rec.note||"")}</textarea></div><button class="btn sm" id="mSave">Salva</button>`;
+  const sCardio=sched.cardio, sct=sCardio?sCardio.type:null, sco=sct?(rec[sct]||{min:"",km:""}):null;
+  inner+=`<div class="msub">${esc(w.name)}${future?" · in programma":""}</div><div style="margin-bottom:14px">${exHtml}</div>`;
+  if(sCardio) inner+=`<div class="msub" style="margin-top:0">${sct==="run"?"Corsa":"Bici"} · obiettivo ${sCardio.km||""} km</div>
+      <div class="row2">
+        <div class="field" style="margin:0"><label>Durata (min)</label><input class="input" id="mCMin" type="number" inputmode="numeric" placeholder="${sCardio.min||30}" value="${sco.min??""}"></div>
+        <div class="field" style="margin:0"><label>Distanza (km)</label><input class="input" id="mCKm" type="number" inputmode="decimal" step="0.1" placeholder="${sCardio.km||5}" value="${sco.km??""}"></div>
+      </div>`;
+  inner+=`<div class="field" style="margin-top:14px"><label>Nota</label><textarea class="input" id="mNote" placeholder="Sensazioni…">${esc(rec.note||"")}</textarea></div><button class="btn sm" id="mSave">Salva</button>`;
   openModal(inner);
   const working=JSON.parse(JSON.stringify(rec)); working.exercises=working.exercises||{};
   document.querySelectorAll("#modal .check").forEach(c=>{ c.onclick=()=>{ const id=c.dataset.ex; working.exercises[id]=working.exercises[id]||{}; working.exercises[id].done=!working.exercises[id].done; c.classList.toggle("on",working.exercises[id].done); }; });
   document.querySelectorAll("#modal .ex-reps").forEach(inp=>inp.addEventListener("input",()=>{ const id=inp.dataset.reps; working.exercises[id]=working.exercises[id]||{}; working.exercises[id].reps=inp.value; }));
-  document.getElementById("mSave").onclick=()=>{ working.type="strength"; working.workout=wid; working.exIds=exList.map(e=>e.id); working.note=document.getElementById("mNote").value; state.days[key]=working; save(); closeModal(); afterEdit(); };
+  document.getElementById("mSave").onclick=()=>{
+    working.type="strength"; working.workout=wid; working.exIds=exList.map(e=>e.id); working.note=document.getElementById("mNote").value;
+    if(sct) working[sct]={min:document.getElementById("mCMin").value, km:document.getElementById("mCKm").value};
+    state.days[key]=working; save(); closeModal(); afterEdit();
+  };
 }
 function openExerciseHistory(exId){
   const ex=exLookup(exId), hist=exerciseHistory(exId);
@@ -1355,7 +1432,11 @@ function renderPlanEditor(){
     const typeSel=`<select class="input" data-pd="${dow}" data-k="type">${TYPES.map(t=>`<option value="${t[0]}" ${s.type===t[0]?"selected":""}>${t[1]}</option>`).join("")}</select>`;
     let extra="";
     if(s.type==="strength"){
-      extra=`<select class="input" data-pd="${dow}" data-k="workout">${["A","B","C","D"].map(x=>`<option value="${x}" ${s.workout===x?"selected":""}>Scheda ${x}</option>`).join("")}</select>`;
+      const c=s.cardio||{};
+      const cOpts=[["","Nessuna uscita"],["run","+ Corsa"],["bike","+ Bici"]].map(o=>`<option value="${o[0]}" ${(c.type||"")===o[0]?"selected":""}>${o[1]}</option>`).join("");
+      extra=`<select class="input" data-pd="${dow}" data-k="workout">${["A","B","C","D"].map(x=>`<option value="${x}" ${s.workout===x?"selected":""}>Scheda ${x}</option>`).join("")}</select>`
+        +`<select class="input" data-pd="${dow}" data-k="ctype">${cOpts}</select>`
+        +(c.type?`<div class="row2"><input class="input" data-pd="${dow}" data-k="ckm" type="number" step="0.5" placeholder="km" value="${c.km??""}"><input class="input" data-pd="${dow}" data-k="cmin" type="number" placeholder="min" value="${c.min??""}"></div>`:"");
     } else if(s.type==="bike"||s.type==="run"){
       extra=`<input class="input" data-pd="${dow}" data-k="label" placeholder="Etichetta" value="${esc(s.label||(s.type==="bike"?"Bici":"Corsa"))}"><div class="row2"><input class="input" data-pd="${dow}" data-k="km" type="number" step="0.5" placeholder="km" value="${s.km??""}"><input class="input" data-pd="${dow}" data-k="min" type="number" placeholder="min" value="${s.min??""}"></div>`;
     } else {
@@ -1379,7 +1460,7 @@ function renderPlanEditor(){
     </div>`;
   body.querySelectorAll("[data-addx]").forEach(b=>b.onclick=()=>{ collectPlan(); state.plan.workouts[b.dataset.addx].exercises.push({id:"ex"+Math.random().toString(36).slice(2,8), name:"", target:"4 × 10"}); renderPlanEditor(); });
   body.querySelectorAll("[data-delx]").forEach(b=>b.onclick=()=>{ const [wid,i]=b.dataset.delx.split(":"); collectPlan(); state.plan.workouts[wid].exercises.splice(+i,1); renderPlanEditor(); });
-  body.querySelectorAll("[data-k='type']").forEach(s=>s.onchange=()=>{ collectPlan(); renderPlanEditor(); });
+  body.querySelectorAll("[data-k='type'],[data-k='ctype']").forEach(s=>s.onchange=()=>{ collectPlan(); renderPlanEditor(); });
   document.getElementById("planSave").onclick=()=>{ collectPlan(); save(); toast("Piano salvato"); refreshBadges(); if(currentTab==="oggi") renderOggi(); };
   document.getElementById("planReset").onclick=()=>{ if(confirm("Ripristinare il piano predefinito? Gli allenamenti già registrati restano.")){ state.plan=defaultPlan(); save(); renderPlanEditor(); toast("Piano ripristinato"); } };
 }
@@ -1389,7 +1470,18 @@ function collectPlan(){
   body.querySelectorAll("[data-pd]").forEach(el=>{ const dow=el.dataset.pd, k=el.dataset.k; byDow[dow]=byDow[dow]||{}; byDow[dow][k]=el.value; });
   Object.keys(byDow).forEach(dow=>{
     const v=byDow[dow], cur=state.plan.schedule[dow]||{}, type=v.type||cur.type||"rest", ns={type};
-    if(type==="strength"){ ns.workout=v.workout||"A"; }
+    if(type==="strength"){
+      ns.workout=v.workout||"A";
+      // Uscita cardio annessa alla scheda: va ricostruita qui, altrimenti si perde
+      // a ogni interazione con l'editor (questa funzione riscrive tutte le voci).
+      const cType=(v.ctype!==undefined)?v.ctype:((cur.cardio&&cur.cardio.type)||"");
+      if(cType==="run"||cType==="bike"){
+        const oldC=cur.cardio||{};
+        const km=(v.ckm!==undefined&&v.ckm!=="")?+v.ckm:(oldC.km||(cType==="run"?5:10));
+        const min=(v.cmin!==undefined&&v.cmin!=="")?+v.cmin:(oldC.min||30);
+        ns.cardio={type:cType, km, min};
+      }
+    }
     else if(type==="bike"||type==="run"){ ns.label=v.label||(type==="bike"?"Bici":"Corsa"); ns.km=(v.km!==undefined&&v.km!=="")?+v.km:(type==="bike"?10:5); ns.min=(v.min!==undefined&&v.min!=="")?+v.min:45; ns.hint=`≈ ${ns.km} km`; ns.mini=cur.mini||"E"; }
     else { ns.label=v.label||"Riposo"; ns.hint=cur.hint||"Recupero completo"; }
     state.plan.schedule[dow]=ns;
@@ -1800,11 +1892,9 @@ function importStravaActivities(list){
     const km=Math.round((a.distance||0)/100)/10;
     let rec=state.days[key];
     if(rec && Array.isArray(rec.stravaIds) && rec.stravaIds.indexOf(a.id)>-1) return;
-    if(!rec){
-      rec={type:t, note:"", stravaIds:[a.id]};
-      rec[t]={min:min, km:km};
-      state.days[key]=rec; imported++; return;
-    }
+    // Nessun record ancora: creane uno della forma prevista dal piano per quel giorno,
+    // così una corsa importata non cancella la scheda di forza di lunedì/venerdì.
+    if(!rec) rec=ensureRecord(key);
     const cur=rec[t];
     // Giornata compilata a mano (valori presenti ma nessun import Strava):
     // probabilmente è la stessa uscita, non toccare né sommare.
@@ -1816,9 +1906,12 @@ function importStravaActivities(list){
     // Promozione del tipo: il record registra ciò che è successo davvero,
     // ma una giornata forza con esercizi già spuntati resta forza.
     const other = t==="bike"?"run":"bike";
+    const schedD = scheduleFor(dateFromKey(key));
+    // Giornata di forza con uscita già prevista dal piano: resta di forza.
+    const prescribed = schedD && schedD.type==="strength" && schedD.cardio && schedD.cardio.type===t;
     const strengthDone = rec.type==="strength" && rec.exercises && Object.values(rec.exercises).some(e=>e&&e.done);
     const otherEmpty = rec.type===other && !(rec[other] && (Number(rec[other].min)>0||Number(rec[other].km)>0));
-    if(rec.type===t){ /* già giusto */ }
+    if(rec.type===t || prescribed){ /* già giusto */ }
     else if(rec.type==="rest" || otherEmpty || (rec.type==="strength" && !strengthDone)) rec.type=t;
     imported++;
   });
