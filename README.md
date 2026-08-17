@@ -28,6 +28,8 @@ Calisthenics a giorni alterni con obiettivo **handstand push-up, front lever e p
 
 Ogni utente può cambiarlo da **Profilo → Personalizza il piano**: tipo di ogni giorno (forza, bici, corsa, riposo), km/durata, esercizi delle schede e — sui giorni di forza — un'uscita di corsa o bici annessa alla seduta.
 
+Oltre alle tre schede del piano c'è **Ez · Full body facile** (australian pull-up, push-up, pike push-up, negative pull-up, diamond push-up, plank): fuori dal calendario, si assegna a un giorno dall'editor quando serve una seduta più leggera.
+
 ## Login multi-utente (Firebase, gratis)
 La sync usa **Firebase** (Auth con Google + Firestore), gratuito per questo uso. La config è già nel codice (progetto `workout-e9380`). Per far funzionare l'accesso **a tutti** servono due cose nella console Firebase:
 

@@ -519,9 +519,9 @@ const WEEK_SHORT = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
 const MONTHS = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
 
 /* Versione dell'app: mostrata nel Profilo, allineata alla cache di sw.js. */
-const APP_VERSION = "v12";
+const APP_VERSION = "v13";
 /* Versione del piano: a ogni incremento migrate() ribilancia le schede di default. */
-const PLAN_REV = 6;
+const PLAN_REV = 7;
 /* Piano predefinito — percorso calisthenics con obiettivo handstand push-up e planche.
    Tre giornate di calisthenics a giorni alterni (martedì, giovedì, sabato), una skill
    per giornata: verticale, front lever, planche. Lunedì, mercoledì e venerdì corsa da
@@ -565,6 +565,19 @@ function defaultPlan(){
           {id:"jumpsquat",    name:"Squat jump", target:"2 × 12–15", tag:"Gambe"},
           {id:"lsit",         name:"L-sit / tuck hold", target:"3 × 15–30 sec", tag:"Addome"},
           {id:"bicyclecrunch",name:"Bicycle crunch", target:"3 × 30–40", tag:"Addome"},
+        ]},
+      // Seduta facile, fuori dal calendario: si assegna a un giorno dall'editor del
+      // piano quando serve alleggerire. Id prefissati "ez" così le ripetizioni della
+      // versione facile non abbassano il "Consigliato oggi" delle giornate toste.
+      Ez:{ name:"Ez · Full body facile",
+        note:"Riscaldamento 5 min: circonduzioni spalle × 20, circonduzioni braccia × 20, jumping jack × 30, 5–10 push-up facili · Recupero 60–90 sec tra le serie. Se non hai una sbarra, al posto delle negative fai altre australian pull-up.",
+        exercises:[
+          {id:"ezaus",     name:"Australian pull-up", target:"3 × 8–12", tag:"Schiena"},
+          {id:"ezpush",    name:"Push-up", target:"3 × 8–15", tag:"Petto"},
+          {id:"ezpike",    name:"Pike push-up", target:"3 × 6–10", tag:"Spalle"},
+          {id:"eznegpull", name:"Negative pull-up", target:"3 × 3–5", tag:"Schiena"},
+          {id:"ezdiamond", name:"Diamond push-up", target:"2 × 6–12", tag:"Tricipiti"},
+          {id:"ezplank",   name:"Plank", target:"3 × 30–60 sec", tag:"Addome"},
         ]},
     },
     schedule:{
@@ -684,6 +697,11 @@ function migrate(s){
       // richiesta: qui schede e giorni vengono sostituiti in blocco, lo storico resta.
       s.plan.workouts = dp.workouts;
       s.plan.schedule = dp.schedule;
+    }
+    if(rev < 7){
+      // rev 7: si aggiunge la scheda facile "Ez", disponibile nell'editor del piano.
+      // Solo additivo: calendario e schede esistenti (anche personalizzate) restano.
+      if(!s.plan.workouts.Ez && dp.workouts.Ez) s.plan.workouts.Ez = dp.workouts.Ez;
     }
     if(rev < PLAN_REV) s.plan.rev = PLAN_REV;
   }
