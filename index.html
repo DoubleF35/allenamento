@@ -447,6 +447,8 @@ textarea.input{resize:vertical;min-height:64px}
       <div class="kv"><span class="muted">Misure di peso</span><span id="bWeights">0</span></div>
       <div class="kv"><span class="muted">Allenamenti completati</span><span id="bWorkouts">0</span></div>
       <div class="kv"><span class="muted">Versione app</span><span id="bVer">—</span></div>
+      <button class="btn ghost sm" id="updBtn" style="margin-top:12px">Aggiorna app</button>
+      <p class="hint">Se una modifica non compare, questo svuota la cache e ricarica.</p>
     </div>
     <div class="card">
       <div class="section-title" style="margin:0 0 12px">Backup</div>
@@ -517,74 +519,62 @@ const WEEK_SHORT = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
 const MONTHS = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
 
 /* Versione dell'app: mostrata nel Profilo, allineata alla cache di sw.js. */
-const APP_VERSION = "v11";
+const APP_VERSION = "v12";
 /* Versione del piano: a ogni incremento migrate() ribilancia le schede di default. */
-const PLAN_REV = 5;
+const PLAN_REV = 6;
 /* Piano predefinito — percorso calisthenics con obiettivo handstand push-up e planche.
-   Braccia, petto, schiena e addominali ogni giorno di allenamento; gambe ridotte a un
-   richiamo esplosivo (corsa e bici coprono già il resto).
-   4 giornate di forza (A/B/C/D), due con 5 km di corsa annessi, + blocco front lever
-   e tirata (scheda E) dopo l'uscita di mercoledì e sabato. */
+   Tre giornate di calisthenics a giorni alterni (martedì, giovedì, sabato), una skill
+   per giornata: verticale, front lever, planche. Lunedì, mercoledì e venerdì corsa da
+   5 km, senza lavoro a corpo libero così la parte alta recupera. Domenica riposo. */
 function defaultPlan(){
   return {
     rev: PLAN_REV,
     workouts:{
       A:{ name:"A · Verticale & Spinta",
-        note:"Riscalda polsi e spalle 8–10 min · skill da fresco, poi la forza · recupero 90 s sulle tenute. Quando i pike rialzati superano le 10 reps, aggiungi le negative di HSPU al muro.",
+        note:"Riscalda polsi e spalle 8–10 min · skill da fresco, poi la forza · recupero 90 s sulle tenute, 60–75 s sul resto. Quando i pike rialzati superano le 10 reps, aggiungi le negative di HSPU al muro.",
         exercises:[
           {id:"wallhold", name:"Verticale al muro (tenuta)", target:"4 × 20–40 sec", tag:"Skill"},
           {id:"pikeelev", name:"Pike push-up piedi rialzati", target:"3 × 6–10", tag:"Spalle"},
           {id:"pike",     name:"Pike push-up", target:"3 × 8–12", tag:"Spalle"},
           {id:"dip",      name:"Dip alle parallele", target:"3 × 8–12", tag:"Tricipiti"},
+          {id:"diamond",  name:"Push-up diamante", target:"3 × 10–15", tag:"Tricipiti"},
+          {id:"facepull", name:"Face pull (elastico o asciugamano)", target:"3 × 15–20", tag:"Spalle"},
+          {id:"hollow",   name:"Hollow hold", target:"3 × 30–45 sec", tag:"Addome"},
           {id:"crunch",   name:"Crunch a terra", target:"3 × 15–20", tag:"Addome"},
         ]},
-      B:{ name:"B · Trazione & Schiena",
-        note:"Riscaldamento 6–8 min · recupero 90 s · fase negativa lenta e scapole attive: la trazione pulita costruisce anche la planche.",
+      B:{ name:"B · Front Lever & Trazione",
+        note:"Riscaldamento 6–8 min · la skill da fresco, poi il volume di schiena · recupero 90 s sulle tenute, 60–75 s sul resto. Fase negativa lenta e scapole attive. Quando tieni la tuck front lever 15 sec pulita su tutte le serie, passa alla advanced tuck.",
         exercises:[
-          {id:"pullup",   name:"Trazioni presa prona", target:"4 × 6–10", tag:"Schiena"},
-          {id:"chinup",   name:"Trazioni presa supina (chin-up)", target:"3 × 6–10", tag:"Bicipiti"},
-          {id:"row",      name:"Rematore australiano", target:"3 × 10–15", tag:"Schiena"},
+          {id:"etuckfl",  name:"Tuck front lever (tenuta)", target:"4 × 8–15 sec", tag:"Skill"},
+          {id:"eflraise", name:"Front lever raise (tuck)", target:"3 × 5–8", tag:"Skill"},
           {id:"scapull",  name:"Scapular pull-up", target:"3 × 8–12", tag:"Skill"},
-          {id:"legraises",name:"Sollevamento gambe appeso", target:"3 × 10–15", tag:"Addome"},
+          {id:"pullup",   name:"Trazioni presa prona", target:"4 × 6–10", tag:"Schiena"},
+          {id:"earcher",  name:"Trazioni archer", target:"3 × 4–6 per lato", tag:"Schiena"},
+          {id:"erowelev", name:"Rematore australiano piedi rialzati", target:"3 × 8–12", tag:"Schiena"},
+          {id:"chinup",   name:"Trazioni presa supina (chin-up)", target:"3 × 6–10", tag:"Bicipiti"},
+          {id:"etoesbar", name:"Toes-to-bar", target:"3 × 8–12", tag:"Addome"},
         ]},
       C:{ name:"C · Planche & Petto",
-        note:"Riscalda bene i polsi · la tenuta più dura da fresco, il lean come volume · recupero pieno (2 min). Quando tieni la tuck planche 15 s pulita su tutti i set, passa alla advanced tuck (3 × 5–10 s) e usa il lean come back-off.",
+        note:"Riscalda bene i polsi · la tenuta più dura da fresco, il lean come volume · recupero pieno (2 min) sulle skill. Quando tieni la tuck planche 15 s pulita su tutti i set, passa alla advanced tuck (3 × 5–10 s) e usa il lean come back-off.",
         exercises:[
           {id:"tuckplanche",  name:"Tuck planche (tenuta)", target:"3 × 5–15 sec", tag:"Skill"},
           {id:"planchelean",  name:"Planche lean (tenuta)", target:"3 × 20–30 sec", tag:"Skill"},
           {id:"pseudoplanche",name:"Pseudo planche push-up", target:"3 × 6–10", tag:"Petto"},
           {id:"pushup",       name:"Push-up declinati", target:"3 × 10–15", tag:"Petto"},
-          {id:"lsit",         name:"L-sit / tuck hold", target:"3 × 15–30 sec", tag:"Addome"},
-        ]},
-      D:{ name:"D · Braccia & Core",
-        note:"Volume per braccia e addome · recupero 60–75 s · il face pull bilancia le tante spinte della settimana e protegge le spalle · chiudi con un richiamo esplosivo di gambe.",
-        exercises:[
-          {id:"diamond",      name:"Push-up diamante", target:"3 × 10–15", tag:"Tricipiti"},
           {id:"curl",         name:"Curl con elastico o zaino", target:"3 × 10–12", tag:"Bicipiti"},
-          {id:"facepull",     name:"Face pull (elastico o asciugamano)", target:"3 × 15–20", tag:"Spalle"},
-          {id:"hollow",       name:"Hollow hold", target:"3 × 30–45 sec", tag:"Addome"},
-          {id:"bicyclecrunch",name:"Bicycle crunch", target:"3 × 30–40", tag:"Addome"},
           {id:"jumpsquat",    name:"Squat jump", target:"2 × 12–15", tag:"Gambe"},
-        ]},
-      E:{ name:"E · Front Lever & Tirata",
-        note:"Blocco di tirata dopo l'uscita: la skill da fresco, poi il volume di schiena · recupero 90 s sulle tenute, 60–75 s sul resto. Quando tieni la tuck front lever 15 sec pulita su tutte le serie, passa alla advanced tuck.",
-        exercises:[
-          {id:"etuckfl",    name:"Tuck front lever (tenuta)", target:"4 × 8–15 sec", tag:"Skill"},
-          {id:"eflraise",   name:"Front lever raise (tuck)", target:"3 × 5–8", tag:"Skill"},
-          {id:"earcher",    name:"Trazioni archer", target:"3 × 4–6 per lato", tag:"Schiena"},
-          {id:"erowelev",   name:"Rematore australiano piedi rialzati", target:"3 × 8–12", tag:"Schiena"},
-          {id:"echinclose", name:"Trazioni supine presa stretta", target:"3 × 6–10", tag:"Bicipiti"},
-          {id:"etoesbar",   name:"Toes-to-bar", target:"3 × 8–12", tag:"Addome"},
+          {id:"lsit",         name:"L-sit / tuck hold", target:"3 × 15–30 sec", tag:"Addome"},
+          {id:"bicyclecrunch",name:"Bicycle crunch", target:"3 × 30–40", tag:"Addome"},
         ]},
     },
     schedule:{
       0:{type:"rest", label:"Riposo", hint:"Recupero completo · mobilità di polsi e spalle"},
-      1:{type:"strength", workout:"A", cardio:{type:"run", km:5, min:30}},
-      2:{type:"strength", workout:"B"},
-      3:{type:"run", label:"Corsa", km:5, min:30, hint:"≈ 5 km · ritmo libero", mini:"E"},
-      4:{type:"strength", workout:"C"},
-      5:{type:"strength", workout:"D", cardio:{type:"run", km:5, min:30}},
-      6:{type:"bike", label:"Bici", km:10, min:40, hint:"almeno 10 km", mini:"E"},
+      1:{type:"run", label:"Corsa", km:5, min:30, hint:"≈ 5 km · ritmo libero"},
+      2:{type:"strength", workout:"A"},
+      3:{type:"run", label:"Corsa", km:5, min:30, hint:"≈ 5 km · ritmo libero"},
+      4:{type:"strength", workout:"B"},
+      5:{type:"run", label:"Corsa", km:5, min:30, hint:"≈ 5 km · ritmo libero"},
+      6:{type:"strength", workout:"C"},
     }
   };
 }
@@ -627,6 +617,11 @@ const LEGACY_WORKOUTS = {
     {id:"echin",       name:"Trazioni supine", target:"2 × 6–10"},
     {id:"ehollow",     name:"Hollow hold", target:"2 × 20–30 sec"},
     {id:"eplank",      name:"Plank", target:"2 × 45–60 sec"},
+    // Usciti con la settimana su tre giorni di forza: nella stessa seduta erano il
+    // doppione di una variante più difficile che resta in scheda.
+    {id:"row",         name:"Rematore australiano", target:"3 × 10–15"},
+    {id:"echinclose",  name:"Trazioni supine presa stretta", target:"3 × 6–10"},
+    {id:"legraises",   name:"Sollevamento gambe appeso", target:"3 × 10–15"},
   ],
 };
 
@@ -679,7 +674,16 @@ function migrate(s){
     if(rev < 5){
       // rev 5: il blocco dopo l'uscita diventa una seduta di tirata (front lever)
       // al posto del vecchio mini blocco braccia & core.
-      s.plan.workouts.E = dp.workouts.E;
+      if(dp.workouts.E) s.plan.workouts.E = dp.workouts.E;
+    }
+    if(rev < 6){
+      // rev 6: settimana riorganizzata. Calisthenics a giorni alterni (martedì, giovedì,
+      // sabato) con una skill per giornata — verticale, front lever, planche — e gli
+      // esercizi delle vecchie schede D ed E ridistribuiti nelle tre. Lunedì, mercoledì
+      // e venerdì di sola corsa, così la parte alta recupera. Riorganizzazione completa
+      // richiesta: qui schede e giorni vengono sostituiti in blocco, lo storico resta.
+      s.plan.workouts = dp.workouts;
+      s.plan.schedule = dp.schedule;
     }
     if(rev < PLAN_REV) s.plan.rev = PLAN_REV;
   }
@@ -718,7 +722,10 @@ function timerElapsed(rec){ const t=rec&&rec.timer; if(!t) return 0; return (t.a
    ============================================================ */
 function scheduleFor(d){ return state.plan.schedule[d.getDay()]; }
 function WK(id){ return state.plan.workouts[id] || state.plan.workouts.A; }
-function allExercises(){ const o={}; ["A","B","C","D","E"].forEach(w=>{ const wk=state.plan.workouts[w]; if(wk) wk.exercises.forEach(e=>o[e.id]={...e,workout:w}); }); return o; }
+/* Elenco delle schede esistenti: derivato dal piano, non fisso, così aggiungere o
+   togliere una scheda non richiede di aggiornare mezza app. */
+function workoutIds(){ return Object.keys(state.plan.workouts||{}).filter(w=>state.plan.workouts[w] && Array.isArray(state.plan.workouts[w].exercises)); }
+function allExercises(){ const o={}; workoutIds().forEach(w=>{ state.plan.workouts[w].exercises.forEach(e=>o[e.id]={...e,workout:w}); }); return o; }
 function exLookup(id){ const a=allExercises(); if(a[id]) return a[id]; for(const list of Object.values(LEGACY_WORKOUTS)){ const f=list.find(e=>e.id===id); if(f) return f; } return {id,name:id,target:""}; }
 function workoutForDay(key, sched, rec){ if(sched.type!=="strength") return null; return (rec && rec.workout) || sched.workout; }
 
@@ -1450,7 +1457,7 @@ function renderPlanEditor(){
     if(s.type==="strength"){
       const c=s.cardio||{};
       const cOpts=[["","Nessuna uscita"],["run","+ Corsa"],["bike","+ Bici"]].map(o=>`<option value="${o[0]}" ${(c.type||"")===o[0]?"selected":""}>${o[1]}</option>`).join("");
-      extra=`<select class="input" data-pd="${dow}" data-k="workout">${["A","B","C","D"].map(x=>`<option value="${x}" ${s.workout===x?"selected":""}>Scheda ${x}</option>`).join("")}</select>`
+      extra=`<select class="input" data-pd="${dow}" data-k="workout">${workoutIds().map(x=>`<option value="${x}" ${s.workout===x?"selected":""}>Scheda ${x}</option>`).join("")}</select>`
         +`<select class="input" data-pd="${dow}" data-k="ctype">${cOpts}</select>`
         +(c.type?`<div class="row2"><input class="input" data-pd="${dow}" data-k="ckm" type="number" step="0.5" placeholder="km" value="${c.km??""}"><input class="input" data-pd="${dow}" data-k="cmin" type="number" placeholder="min" value="${c.min??""}"></div>`:"");
     } else if(s.type==="bike"||s.type==="run"){
@@ -1460,7 +1467,7 @@ function renderPlanEditor(){
     }
     return `<div class="plan-day"><div class="dn">${WEEK_SHORT[dow]}</div><div class="plan-fields">${typeSel}${extra}</div></div>`;
   }).join("");
-  const wks=["A","B","C","D","E"].map(wid=>{
+  const wks=workoutIds().map(wid=>{
     const w=state.plan.workouts[wid];
     const exs=w.exercises.map((e,i)=>`<div class="ex-edit"><input class="input" data-w="${wid}" data-i="${i}" data-k="name" value="${esc(e.name)}" placeholder="Esercizio"><input class="input" data-w="${wid}" data-i="${i}" data-k="target" value="${esc(e.target)}" placeholder="4 × 10"><button class="icon-btn" data-delx="${wid}:${i}">×</button></div>`).join("");
     return `<div style="margin-top:18px"><input class="input" data-w="${wid}" data-k="wname" value="${esc(w.name)}" placeholder="Nome scheda" style="font-weight:600;margin-bottom:10px">${exs}<button class="btn ghost sm" data-addx="${wid}" style="margin-top:4px">+ Aggiungi esercizio</button></div>`;
@@ -1498,11 +1505,20 @@ function collectPlan(){
         ns.cardio={type:cType, km, min};
       }
     }
-    else if(type==="bike"||type==="run"){ ns.label=v.label||(type==="bike"?"Bici":"Corsa"); ns.km=(v.km!==undefined&&v.km!=="")?+v.km:(type==="bike"?10:5); ns.min=(v.min!==undefined&&v.min!=="")?+v.min:45; ns.hint=`≈ ${ns.km} km`; ns.mini=cur.mini||"E"; }
+    else if(type==="bike"||type==="run"){
+      ns.label=v.label||(type==="bike"?"Bici":"Corsa");
+      ns.km=(v.km!==undefined&&v.km!=="")?+v.km:(type==="bike"?10:5);
+      ns.min=(v.min!==undefined&&v.min!=="")?+v.min:45;
+      ns.hint=`≈ ${ns.km} km`;
+      // Conserva il blocco extra solo se c'era già e se la scheda esiste ancora:
+      // prima ne veniva attaccato uno d'ufficio, e i giorni di sola corsa se lo
+      // ritrovavano addosso al primo salvataggio del piano.
+      if(cur.mini && state.plan.workouts[cur.mini]) ns.mini=cur.mini;
+    }
     else { ns.label=v.label||"Riposo"; ns.hint=cur.hint||"Recupero completo"; }
     state.plan.schedule[dow]=ns;
   });
-  ["A","B","C","D","E"].forEach(wid=>{
+  workoutIds().forEach(wid=>{
     const nmeEl=body.querySelector(`[data-w='${wid}'][data-k='wname']`);
     if(nmeEl) state.plan.workouts[wid].name=nmeEl.value||("Scheda "+wid);
     const exs=state.plan.workouts[wid].exercises;
@@ -1675,6 +1691,7 @@ document.getElementById("exportBtn").onclick=doExport;
 document.getElementById("importBtn").onclick=()=>document.getElementById("importFile").click();
 document.getElementById("importFile").onchange=e=>{ if(e.target.files[0]) doImport(e.target.files[0]); e.target.value=""; };
 document.getElementById("resetBtn").onclick=()=>{ if(confirm("Cancellare TUTTI i dati? Esporta prima un backup. Operazione irreversibile.")){ localStorage.removeItem(LS_KEY); state=load(); save(); renderAll(); show("backup"); toast("Dati azzerati"); } };
+document.getElementById("updBtn").onclick=()=>{ toast("Aggiorno…"); forceUpdate(); };
 
 /* ============================================================
    Sincronizzazione cloud (Firebase Auth + Firestore) — multi-utente
@@ -2005,25 +2022,22 @@ function init(){
   if("serviceWorker" in navigator) initServiceWorker();
   else applyReminders();
 }
-/* Registrazione del service worker + aggiornamento automatico: quando una nuova
-   versione prende il controllo la pagina si ricarica una volta sola, così un
-   aggiornamento pubblicato si vede senza svuotare la cache a mano. */
-let swReloading=false;
+/* Registrazione del service worker. Nessuna ricarica automatica: la pagina viene già
+   presa dalla rete a ogni apertura (vedi sw.js), quindi un aggiornamento pubblicato si
+   vede da solo. Ricaricarsi da soli interrompeva l'app mentre la stavi usando. Se una
+   versione resta indietro c'è il pulsante "Aggiorna app" nel Profilo. */
 function initServiceWorker(){
-  const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register("./sw.js")
     .then(reg=>{ applyReminders(); if(reg.update) reg.update().catch(()=>{}); })
     .catch(()=>applyReminders());
-  navigator.serviceWorker.addEventListener("controllerchange",()=>{
-    // Alla primissima visita non c'era nessun controller: nessuna ricarica da fare.
-    if(!hadController || swReloading) return;
-    swReloading=true; toast("Nuova versione: ricarico…");
-    setTimeout(()=>location.reload(),900);
-  });
-  document.addEventListener("visibilitychange",()=>{
-    if(document.hidden) return;
-    navigator.serviceWorker.getRegistration().then(r=>{ if(r && r.update) r.update().catch(()=>{}); }).catch(()=>{});
-  });
+}
+/* Svuota le cache e ricarica: via d'uscita manuale, senza dover reinstallare l'app. */
+async function forceUpdate(){
+  try{
+    if("caches" in window){ const keys=await caches.keys(); await Promise.all(keys.map(k=>caches.delete(k))); }
+    if("serviceWorker" in navigator){ const reg=await navigator.serviceWorker.getRegistration(); if(reg && reg.update) await reg.update().catch(()=>{}); }
+  }catch(e){ /* se la pulizia non riesce, la ricarica qui sotto vale comunque la pena */ }
+  location.reload();
 }
 init();
 </script>
