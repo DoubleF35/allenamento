@@ -519,7 +519,7 @@ const WEEK_SHORT = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
 const MONTHS = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
 
 /* Versione dell'app: mostrata nel Profilo, allineata alla cache di sw.js. */
-const APP_VERSION = "v13";
+const APP_VERSION = "v14";
 /* Versione del piano: a ogni incremento migrate() ribilancia le schede di default. */
 const PLAN_REV = 7;
 /* Piano predefinito — percorso calisthenics con obiettivo handstand push-up e planche.
@@ -837,7 +837,7 @@ function exRowHtml(e, rec, key, idx){
       <div class="ex-body">
         <div class="ex-head"><span class="ex-num">${String(idx+1).padStart(2,"0")}</span><span class="ex-name">${esc(e.name)}</span>${e.tag?`<span class="ex-tag">${esc(e.tag)}</span>`:""}</div>
         <div class="ex-target">Obiettivo ${esc(e.target)}</div>
-        ${sug ? `<div class="ex-suggest" title="Proposta in automatico dai tuoi ultimi allenamenti">Consigliato oggi <strong>${esc(sug)}</strong></div>` : ""}
+        ${sug ? `<div class="ex-suggest" title="Proposta dai tuoi ultimi allenamenti: sale di 1 dopo due volte di fila con le stesse ripetizioni">Consigliato oggi <strong>${esc(sug)}</strong></div>` : ""}
         <input class="ex-reps" data-reps="${e.id}" placeholder="${esc(ph)}" value="${esc(er.reps||"")}">
         <button class="ex-hist" data-hist="${e.id}">Storico${last?` · <span class="last">ultima: ${esc(last)}</span>`:""}</button>
       </div>
@@ -1256,19 +1256,23 @@ function lastReps(exId, beforeKey){
 function targetSets(target){ const m=String(target||"").match(/(\d+)\s*[×xX]/); return m?parseInt(m[1],10):3; }
 function targetSuffix(target){ const m=String(target||"").match(/[×xX][\s\d.,–—\-]*(.*)$/); return (m && m[1]) ? " "+m[1].trim() : ""; }
 /* Progressione automatica: propone le ripetizioni per la prossima volta in base allo
-   storico. Parte dalla media delle reps svolte; se l'ultima volta hai completato tutte
-   le serie al numero proposto (min ≥ proposta) propone +1, altrimenti riparte dalla media.
+   storico. Parte dalla media delle reps della prima sessione registrata e sale di 1 solo
+   dopo DUE allenamenti di fila chiusi alla proposta (si guarda la serie peggiore: tutte
+   le serie almeno al numero proposto). Un calo fa ripartire dalla media di quella
+   sessione, che conta già come la prima delle due.
    Replay cronologico dello storico → stateless e robusto rispetto alla sync multi-device. */
 function suggestPerSet(exId, beforeKey){
   const keys=Object.keys(state.days).filter(k=>k<beforeKey).sort();
-  let sug=null;
+  let sug=null, streak=0;
   for(const k of keys){
     const r=state.days[k];
     if(!(r.exercises && r.exercises[exId])) continue;
     const nums=parseReps(r.exercises[exId].reps);
     if(!nums.length) continue;
     const avg=Math.round(nums.reduce((a,b)=>a+b,0)/nums.length);
-    sug = (sug===null) ? avg : (Math.min(...nums)>=sug ? sug+1 : avg);
+    if(sug===null){ sug=avg; streak=1; continue; }
+    if(Math.min(...nums)>=sug){ streak++; if(streak>=2){ sug=sug+1; streak=0; } }
+    else { sug=avg; streak=1; }
   }
   return sug;
 }
@@ -1431,7 +1435,7 @@ function openDayEditor(key){
   rec.exercises=rec.exercises||{};
   const wid=rec.workout||workoutForDay(key,sched,rec), w=WK(wid);
   const exList=(Array.isArray(rec.exIds)&&rec.exIds.length) ? rec.exIds.map(id=>exLookup(id)) : w.exercises;
-  const exHtml=exList.map(e=>{ const er=rec.exercises[e.id]||{}; const per=suggestPerSet(e.id,key); const sug=per!==null?`${targetSets(e.target)} × ${per}${targetSuffix(e.target)}`:""; return `<div class="ex"><div class="check ${er.done?"on":""}" data-ex="${e.id}" role="checkbox" tabindex="0"><svg viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></svg></div><div class="ex-body"><div class="ex-name">${esc(e.name)}</div>${sug?`<div class="ex-suggest" title="Proposta in automatico dai tuoi ultimi allenamenti">Consigliato <strong>${esc(sug)}</strong></div>`:""}${e.target?`<div class="ex-target">Obiettivo ${esc(e.target)}</div>`:""}<input class="ex-reps" data-reps="${e.id}" placeholder="es. 12, 11, 10" value="${esc(er.reps||"")}"></div></div>`; }).join("");
+  const exHtml=exList.map(e=>{ const er=rec.exercises[e.id]||{}; const per=suggestPerSet(e.id,key); const sug=per!==null?`${targetSets(e.target)} × ${per}${targetSuffix(e.target)}`:""; return `<div class="ex"><div class="check ${er.done?"on":""}" data-ex="${e.id}" role="checkbox" tabindex="0"><svg viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></svg></div><div class="ex-body"><div class="ex-name">${esc(e.name)}</div>${sug?`<div class="ex-suggest" title="Proposta dai tuoi ultimi allenamenti: sale di 1 dopo due volte di fila con le stesse ripetizioni">Consigliato <strong>${esc(sug)}</strong></div>`:""}${e.target?`<div class="ex-target">Obiettivo ${esc(e.target)}</div>`:""}<input class="ex-reps" data-reps="${e.id}" placeholder="es. 12, 11, 10" value="${esc(er.reps||"")}"></div></div>`; }).join("");
   const sCardio=sched.cardio, sct=sCardio?sCardio.type:null, sco=sct?(rec[sct]||{min:"",km:""}):null;
   inner+=`<div class="msub">${esc(w.name)}${future?" · in programma":""}</div><div style="margin-bottom:14px">${exHtml}</div>`;
   if(sCardio) inner+=`<div class="msub" style="margin-top:0">${sct==="run"?"Corsa":"Bici"} · obiettivo ${sCardio.km||""} km</div>

@@ -3,7 +3,7 @@
    - notifiche promemoria via periodicSync (best-effort) + notificationclick
    La config promemoria è scritta dalla pagina in IndexedDB (db "allenamento-rem", store "kv", chiave "config"). */
 
-const CACHE = "allenamento-v13";
+const CACHE = "allenamento-v14";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 /* Librerie da CDN: vanno in cache come tutto il resto, altrimenti a ogni avvio
    l'app resta in attesa della rete (sono script bloccanti) e offline non parte. */

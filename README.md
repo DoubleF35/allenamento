@@ -9,6 +9,7 @@ Funziona **offline** sul dispositivo (`localStorage`); con l'accesso (gratuito) 
 - **Percorso su misura** — nei giorni di bici/corsa: dai la posizione, scegli i km e l'app genera un **anello ad-hoc su strada** (motore gratuito BRouter): partenza e arrivo coincidono e l'algoritmo confronta più anelli candidati in parallelo scegliendo quello che **minimizza i tratti ripetuti** avanti-e-indietro, oltre a centrare i km voluti. Mappa (Leaflet + OpenStreetMap), dislivello, tempo stimato e % di strade ripetute. Esporta in **GPX** (Strava/Komoot/Garmin) o apri in **Google Maps**.
 - **Storico** — calendario a celle piene: **verde = completato, giallo = parziale, rosso = saltato**, grigio = riposo, col numero del giorno. Tocca un giorno per modificarlo.
 - **Statistiche** — totali, completamento settimana, km/min cardio, grafico peso e progressione per esercizio.
+- **Consigliato oggi** — sotto ogni esercizio l'app propone le ripetizioni in base ai tuoi allenamenti passati: sale di una **dopo due volte di fila** chiuse con le stesse ripetizioni (contano tutte le serie, si guarda la peggiore), e riparte dalla media se hai un calo.
 - **Peso** — log del peso corporeo con grafico.
 - **Profilo** — account/login, **collegamento Strava**, **editor del piano**, promemoria, backup JSON e **Aggiorna app** (svuota la cache e ricarica, se una modifica pubblicata non compare).
 - **Promemoria** — notifiche nei giorni/orario scelti + export **.ics** (promemoria ricorrente nel calendario del telefono, affidabile anche ad app chiusa).
